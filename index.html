@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secondary Math Galaxy</title>
+  <meta name="description" content="An interactive traversable galaxy of secondary mathematical concepts for Idaho teachers." />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0a0a1a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=6" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Top Bar ─────────────────────────────────────────────── -->
+  <div id="top-bar">
+    <button id="sidebar-toggle" title="Toggle task menu">☰</button>
+    <h1>🌌 Secondary Math Galaxy</h1>
+
+    <!-- Control Panel 2: Teaching Stage -->
+    <div class="stage-group" title="Toggle teaching stage">
+      <button class="stage-btn active" data-stage="before">📋 Planning</button>
+      <button class="stage-btn" data-stage="after">🔄 Reflecting</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Search -->
+    <div id="search-wrapper">
+      <input id="search-input" type="search" placeholder="Search concepts…" autocomplete="off" />
+      <div id="search-dropdown"></div>
+    </div>
+
+    <!-- About -->
+    <button id="about-btn">About / Philosophy</button>
+  </div>
+
+  <!-- ── Main ──────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- ── Sidebar: Control Panel 1 ──────────────────────────── -->
+    <div id="sidebar">
+      <div class="sidebar-section" style="flex:1;min-height:0">
+        <div class="sidebar-heading">📚 Tasks</div>
+        <div id="task-list"></div>
+      </div>
+      <div id="context-panel">
+        <p class="hint">Select a task to see teacher context.</p>
+      </div>
+    </div>
+
+    <!-- ── Galaxy Canvas ─────────────────────────────────────── -->
+    <div id="cy-container">
+      <div id="cy"></div>
+
+      <!-- Multi-select detail stack (right panel) -->
+      <div id="detail-stack"></div>
+
+      <!-- Canvas nav controls -->
+      <div id="nav-controls">
+        <button class="nav-btn" id="btn-home"     title="Home view"  onclick="zoomHome()">⌂</button>
+        <button class="nav-btn" id="btn-zoom-in"  title="Zoom in"    onclick="zoomIn()">＋</button>
+        <button class="nav-btn" id="btn-zoom-out" title="Zoom out"   onclick="zoomOut()">－</button>
+      </div>
+
+      <!-- Shift-click hint -->
+      <div id="select-hint">Shift+click to select multiple nodes</div>
+    </div>
+
+  </div><!-- /#main -->
+
+</div><!-- /#app -->
+
+<!-- ── About Overlay ──────────────────────────────────────────── -->
+<div id="about-overlay">
+  <div id="about-modal">
+    <button id="about-close">✕ Close</button>
+    <div id="about-content"></div>
+  </div>
+</div>
+
+<!-- ── PDF Modal ──────────────────────────────────────────────── -->
+<div id="pdf-modal">
+  <div id="pdf-modal-inner">
+    <div id="pdf-modal-header">
+      <span id="pdf-modal-title"></span>
+      <button id="pdf-modal-close">✕ Close</button>
+    </div>
+    <iframe id="pdf-iframe" src="" allow="autoplay"></iframe>
+  </div>
+</div>
+
+<!-- ── Scripts ───────────────────────────────────────────────── -->
+<script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+<script src="js/data.js?v=6"></script>
+<script src="js/sheets-config.js?v=7"></script>
+<script src="js/loader.js?v=7"></script>
+<script src="js/layout.js?v=6"></script>
+<script src="js/graph.js?v=6"></script>
+<script src="js/ui.js?v=6"></script>
+<script src="js/app.js?v=6"></script>
+</body>
+</html>

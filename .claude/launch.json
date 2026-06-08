@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "math-galaxy",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$l = [System.Net.HttpListener]::new(); $l.Prefixes.Add('http://localhost:3456/'); $l.Start(); Write-Host 'Serving on http://localhost:3456'; while($l.IsListening){ $ctx=$l.GetContext(); $req=$ctx.Request; $res=$ctx.Response; $path = $req.Url.LocalPath.TrimStart('/'); if($path -eq '') { $path = 'index.html' }; $file = Join-Path 'C:\\Users\\zedii\\Documents\\Claude Code Galaxy Project' $path; if(Test-Path $file -PathType Leaf){ $bytes=[System.IO.File]::ReadAllBytes($file); $ext=[System.IO.Path]::GetExtension($file); $mime=@{'.html'='text/html';'.css'='text/css';'.js'='application/javascript';'.json'='application/json';'.jpg'='image/jpeg';'.png'='image/png'}[$ext]; if(-not $mime){$mime='application/octet-stream'}; $res.ContentType=$mime; $res.ContentLength64=$bytes.Length; $res.OutputStream.Write($bytes,0,$bytes.Length) } else { $res.StatusCode=404 }; $res.Close() }"
+      ],
+      "port": 3456
+    }
+  ]
+}

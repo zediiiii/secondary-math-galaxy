@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Export Galaxy Data → CSV</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #1a1a2e; color: #eee; }
+    h1   { color: #7c6fff; }
+    .btn { display: block; margin: 12px 0; padding: 10px 20px; background: #7c6fff;
+           color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; width: 320px; }
+    .btn:hover { background: #9b8fff; }
+    .note { color: #aaa; font-size: 13px; margin-top: 6px; }
+    .section { margin: 2rem 0; border-top: 1px solid #333; padding-top: 1.5rem; }
+    ol { line-height: 1.9; }
+  </style>
+</head>
+<body>
+  <h1>Galaxy Data → Google Sheets Export</h1>
+
+  <div class="section">
+    <h2>Step 1 — Download the 5 CSV files</h2>
+    <button class="btn" onclick="dl('nodes')">⬇ Download nodes.csv</button>
+    <button class="btn" onclick="dl('progressions')">⬇ Download progressions.csv</button>
+    <button class="btn" onclick="dl('crossdomain')">⬇ Download crossdomain.csv</button>
+    <button class="btn" onclick="dl('tasks')">⬇ Download tasks.csv</button>
+    <button class="btn" onclick="dl('teacher_context')">⬇ Download teacher_context.csv</button>
+  </div>
+
+  <div class="section">
+    <h2>Step 2 — Import into Google Sheets</h2>
+    <ol>
+      <li>Open your blank Google Sheet.</li>
+      <li>For each CSV: click the sheet tab at the bottom → rename it to match the filename
+          (e.g. <strong>nodes</strong>, <strong>progressions</strong>, etc.).</li>
+      <li>With that tab selected, go to <strong>File → Import → Upload</strong> and choose the CSV.
+          Select <em>"Replace current sheet"</em> and <em>"No"</em> for converting numbers.</li>
+      <li>Repeat for all 5 files.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Step 3 — Publish as CSV</h2>
+    <ol>
+      <li>Go to <strong>File → Share → Publish to web</strong>.</li>
+      <li>For each tab, choose the tab name in the first dropdown and
+          <strong>Comma-separated values (.csv)</strong> in the second.</li>
+      <li>Click <strong>Publish</strong> and copy the URL — you need one URL per tab (5 total).</li>
+      <li>Paste the 5 URLs into <code>js/sheets-config.js</code> in the project.</li>
+    </ol>
+    <p class="note">Tip: enable "Automatically republish when changes are made" so edits in Sheets go live immediately.</p>
+  </div>
+
+<script src="js/data.js"></script>
+<script>
+// ── CSV helpers ──────────────────────────────────────────────────────────────
+
+function esc(v) {
+  if (v === undefined || v === null) return '';
+  const s = String(v).replace(/\n/g, ' ').replace(/\r/g, '');
+  return (s.includes(',') || s.includes('"') || s.includes('\n'))
+    ? '"' + s.replace(/"/g, '""') + '"'
+    : s;
+}
+
+function row(...fields) { return fields.map(esc).join(','); }
+function csv(header, rows) { return [header, ...rows].join('\r\n'); }
+
+// ── Builders ─────────────────────────────────────────────────────────────────
+
+function buildNodes() {
+  const header = 'id,tier,domain,parent,label,description,mediaLink';
+  const all = [...DOMAINS, ...BIG_IDEAS, ...MENTAL_ACTIONS, ...SAMPLES];
+  const rows = all.map(n =>
+    row(n.id, n.tier, n.domain, n.parent || '', n.label || n.id, n.description || '', n.mediaLink || ''));
+  return csv(header, rows);
+}
+
+function buildProgressions() {
+  const header = 'from,to,weight,description';
+  const rows = CONNECTIONS
+    .filter(c => c.type === 'progression')
+    .map(c => row(c.from, c.to, c.weight || 7, c.description || ''));
+  return csv(header, rows);
+}
+
+function buildCrossDomain() {
+  const header = 'id,from,to,strength,description';
+  const rows = CROSS_DOMAIN.map(x => row(x.id, x.from, x.to, x.strength, x.description));
+  return csv(header, rows);
+}
+
+function buildTasks() {
+  const header = 'id,label,category,domain,pdfLink,targetMAs';
+  const rows = TASKS.map(t =>
+    row(t.id, t.label, t.category, t.domain || '', t.pdfLink || '', (t.targetMAs || []).join('|')));
+  return csv(header, rows);
+}
+
+function buildTeacherContext() {
+  const header = 'taskId,stage,maId,type,content';
+  const rows = [];
+  for (const t of TASKS) {
+    for (const ctx of (t.beforeContext || []))
+      rows.push(row(t.id, 'before', ctx.maId, ctx.type, ctx.content));
+    for (const ctx of (t.afterContext || []))
+      rows.push(row(t.id, 'after', ctx.maId, ctx.type, ctx.content));
+  }
+  return csv(header, rows);
+}
+
+// ── Download ─────────────────────────────────────────────────────────────────
+
+const EXPORTS = {
+  nodes:           buildNodes,
+  progressions:    buildProgressions,
+  crossdomain:     buildCrossDomain,
+  tasks:           buildTasks,
+  teacher_context: buildTeacherContext,
+};
+
+function dl(name) {
+  const content = EXPORTS[name]();
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = name + '.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "Secondary Math Galaxy",
+  "short_name": "Math Galaxy",
+  "description": "An interactive traversable galaxy of secondary mathematical concepts.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0a1a",
+  "theme_color": "#0a0a1a",
+  "icons": []
+}
