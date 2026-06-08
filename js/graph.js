@@ -132,6 +132,7 @@ const STYLESHEET = [
   { selector: 'edge.edge-dim',    style: { 'opacity': 0.18 } },
   { selector: 'edge.inactive',    style: { 'opacity': 0.03 } },
   { selector: '.search-highlight', style: { 'border-width': 4, 'border-color': '#ffeb3b', 'opacity': 1, 'z-index': 20 } },
+  { selector: '.editor-selected', style: { 'border-color': '#7c6fff', 'border-width': 4, 'opacity': 1, 'z-index': 20 } },
   { selector: '.ctx-before', style: { 'border-color': '#66bb6a', 'border-width': 4 } },
   { selector: '.ctx-after',  style: { 'border-color': '#ffa726', 'border-width': 4 } },
   // Multi-select ring
@@ -208,11 +209,13 @@ function initGraph() {
   updateZoomStyling();
   cy.on('zoom', updateZoomStyling);
 
-  // Tap node — single or shift+click multi-select
+  // Tap node — editor intercepts first when task form is open
   cy.on('tap', 'node', e => {
     const node = e.target;
-    const shiftHeld = e.originalEvent && e.originalEvent.shiftKey;
 
+    if (typeof handleEditorNodeTap === 'function' && handleEditorNodeTap(node)) return;
+
+    const shiftHeld = e.originalEvent && e.originalEvent.shiftKey;
     if (shiftHeld) {
       toggleNodeSelection(node.id());
     } else {

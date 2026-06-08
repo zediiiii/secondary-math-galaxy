@@ -193,6 +193,11 @@ function buildDetailCardHTML(data) {
     mediaHtml = `<div class="detail-section"><img class="sample-img" src="public/samples/${data.mediaLink}" alt="Student work sample" /></div>`;
   }
 
+  // Upload sample button — visible only in edit mode
+  const uploadBtn = (tier === 3 && typeof editorActive !== 'undefined' && editorActive)
+    ? `<div class="detail-section"><button class="upload-sample-btn" onclick="openUploadPanel('${data.id}')">📷 Upload Sample Image</button></div>`
+    : '';
+
   return `
     <div class="detail-card-header">
       <span class="detail-icon">${TIER_ICONS_PANEL[tier] || '•'}</span>
@@ -204,6 +209,7 @@ function buildDetailCardHTML(data) {
     <div class="detail-label">${(data.label || '').replace(/\n/g, ' ')}</div>
     <div class="detail-desc">${data.description || ''}</div>
     ${mediaHtml}
+    ${uploadBtn}
     ${relatedTasksHtml}
     ${contextHtml}
     ${xdHtml}

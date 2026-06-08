@@ -10,6 +10,7 @@ function initApp() {
   initSearch();
   initTeachingStage();
   initSidebarToggle();
+  initEditor();
 
   document.getElementById('about-btn').addEventListener('click', showAboutTab);
   document.getElementById('about-close').addEventListener('click', hideAboutTab);
