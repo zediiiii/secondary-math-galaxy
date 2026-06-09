@@ -743,6 +743,16 @@ body.edit-mode #top-bar {
 /* ── Hint text ── */
 .ef-hint { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
 
+/* ---- Export button ------------------------------------------- */
+#export-data-btn {
+  padding: 6px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-dim); cursor: pointer;
+  font-size: 13px; transition: background 0.15s, color 0.15s;
+  white-space: nowrap; margin-left: 4px;
+}
+#export-data-btn:hover { background: #2a2040; color: var(--accent); border-color: var(--accent); }
+
 /* ---- Card size toggle ---------------------------------------- */
 #card-size-btn {
   background: var(--surface2); border: 1px solid var(--border);

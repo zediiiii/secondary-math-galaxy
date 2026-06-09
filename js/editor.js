@@ -343,19 +343,26 @@ async function saveTask() {
     });
   });
 
-  try {
-    await apiPost({ op: 'append', tab: 'tasks', row: taskRow });
-    for (const row of ctxRows) {
-      await apiPost({ op: 'append', tab: 'teacher_context', row });
-    }
-    taskStatus('✅ Saved! Reload the page to see the new task.', 'ok');
-    cy.nodes('[tier=3]').removeClass('editor-selected');
-    setTimeout(closeTaskForm, 3000);
-  } catch (err) {
-    taskStatus('❌ ' + err.message, 'error');
-  } finally {
-    document.getElementById('tf-save-btn').disabled = false;
-  }
+  // ── Optimistic update: add task to in-memory data immediately ──
+  const newTask = {
+    id, label, category, domain: '', pdfLink: pdf,
+    targetMAs: [...taskFormMAs],
+    beforeContext: ctxRows.filter(r => r[1]==='before').map(r => ({ maId:r[2], type:r[3], content:r[4] })),
+    afterContext:  ctxRows.filter(r => r[1]==='after' ).map(r => ({ maId:r[2], type:r[3], content:r[4] })),
+  };
+  if (typeof TASKS !== 'undefined') TASKS.push(newTask);
+  if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
+  if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+  taskStatus('✅ Added! Syncing to Sheet…', 'ok');
+
+  // ── Background Sheets write ──────────────────────────────────
+  apiPost({ op: 'append', tab: 'tasks', row: taskRow })
+    .then(() => Promise.all(ctxRows.map(row => apiPost({ op: 'append', tab: 'teacher_context', row }))))
+    .then(() => { taskStatus('✅ Saved & synced.', 'ok'); setTimeout(closeTaskForm, 2000); })
+    .catch(err => taskStatus('⚠️ Added locally — Sheet sync failed: ' + err.message, 'warn'));
+
+  cy.nodes('[tier=3]').removeClass('editor-selected');
+  document.getElementById('tf-save-btn').disabled = false;
 }
 
 function taskStatus(msg, type) {
@@ -496,8 +503,8 @@ async function saveImage() {
         row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
       });
 
-      // 3 — add to in-memory data + graph so it appears immediately without reload
-      const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: '', description, mediaLink: filename };
+      // 3 — add to in-memory data + graph immediately; save cache
+      const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: 'Sample', description, mediaLink: filename };
       if (typeof SAMPLES !== 'undefined') SAMPLES.push(newSample);
       if (typeof cy !== 'undefined' && typeof LAYOUT !== 'undefined' && typeof DOMAIN_COLORS !== 'undefined') {
         const maPos  = LAYOUT.positions[uploadNodeId] || { x: 0, y: 0 };
@@ -513,9 +520,10 @@ async function saveImage() {
         cy.add({ group: 'edges', data: { id: `e_${sampleId}`, source: uploadNodeId, target: sampleId, type: 'hierarchy' } });
       }
 
-      document.getElementById('uf-status').textContent = '✅ Sample saved! It appears on the graph now.';
+      if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+      document.getElementById('uf-status').textContent = '✅ Sample saved! Syncing to Sheet…';
       document.getElementById('uf-status').className   = 'ef-status ef-ok';
-      setTimeout(closeUploadPanel, 3000);
+      setTimeout(closeUploadPanel, 2500);
     } catch (err) {
       document.getElementById('uf-status').textContent = '❌ ' + err.message;
       document.getElementById('uf-status').className   = 'ef-status ef-error';

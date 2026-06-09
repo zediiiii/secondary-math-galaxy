@@ -123,6 +123,38 @@ function openDescEditor(nodeId, triggerBtn) {
 
 // ---- App init --------------------------------------------------
 
+// ---- Export button (edit mode) ---------------------------------
+
+function initExportBtn() {
+  const btn = document.createElement('button');
+  btn.id        = 'export-data-btn';
+  btn.title     = 'Download all current data as CSV files';
+  btn.textContent = '📥 Export';
+  btn.style.display = 'none';
+  btn.addEventListener('click', () => {
+    if (typeof galaxyCache !== 'undefined') galaxyCache.exportCSVs();
+  });
+  document.getElementById('top-bar').appendChild(btn);
+}
+
+// Show/hide export button with edit mode
+const _origActivate   = typeof activateEditMode   !== 'undefined' ? activateEditMode   : null;
+const _origDeactivate = typeof deactivateEditMode !== 'undefined' ? deactivateEditMode : null;
+
+function patchEditModeButtons() {
+  // Patch happens after editor.js defines activate/deactivate
+  const exportBtn = document.getElementById('export-data-btn');
+  const origBtn   = document.getElementById('edit-mode-btn');
+  if (!exportBtn || !origBtn) return;
+
+  origBtn.addEventListener('click', () => {
+    // Delay to read class after editor.js toggles it
+    setTimeout(() => {
+      exportBtn.style.display = document.body.classList.contains('edit-mode') ? '' : 'none';
+    }, 50);
+  });
+}
+
 function initApp() {
   buildAboutTab();
   buildTaskSidebar();
@@ -132,6 +164,8 @@ function initApp() {
   initSidebarToggle();
   initEditor();
   initCardSize();
+  initExportBtn();
+  patchEditModeButtons();
 
   document.getElementById('about-btn').addEventListener('click', showAboutTab);
   document.getElementById('about-close').addEventListener('click', hideAboutTab);

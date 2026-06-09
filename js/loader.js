@@ -1,53 +1,100 @@
 // ============================================================
-// Sheets Loader — fetches Google Sheets CSV URLs from
-// SHEETS_CONFIG and overwrites the global data arrays.
-// Falls back to hardcoded data.js when URLs are empty.
+// Sheets Loader — 3-tier data loading with localStorage cache
 //
-// Exports: window.dataReady  (Promise<void>)
-// app.js must call dataReady.then(() => initApp())
+// Priority:
+//   1. /.netlify/functions/sheets-read  (always-fresh API)
+//   2. Published CSV URLs               (fallback if not on Netlify)
+//   3. localStorage cache               (offline / fetch failure)
+//   4. Hardcoded seed data in data.js   (last resort)
+//
+// Exports: window.dataReady (Promise<void>)
 // ============================================================
 
+const CACHE_KEY     = 'galaxy_data_cache';
+const CACHE_TS_KEY  = 'galaxy_data_cache_ts';
+const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+
 window.dataReady = (async () => {
-  const cfg = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG) || {};
-  const urls = [cfg.nodes, cfg.progressions, cfg.crossdomain, cfg.tasks, cfg.teacherContext];
 
-  // If no URLs are configured, use hardcoded data as-is.
-  if (urls.every(u => !u)) return;
-
-  let csvTexts;
+  // ── Tier 1: Netlify sheets-read function ───────────────────
+  let rawData = null;
   try {
-    const bust = `&_t=${Date.now()}`;
-    csvTexts = await Promise.all(urls.map(u => u ? fetch(u + bust, { cache: 'no-store' }).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${u}`);
-      return r.text();
-    }) : Promise.resolve(null)));
-  } catch (err) {
-    console.warn('[loader] Sheets fetch failed, using seed data:', err.message);
+    const res = await fetch('/.netlify/functions/sheets-read', { cache: 'no-store' });
+    if (res.ok) {
+      rawData = await res.json();
+      console.log('[loader] Loaded from Sheets API.');
+    }
+  } catch (e) {
+    console.warn('[loader] sheets-read unavailable:', e.message);
+  }
+
+  // ── Tier 2: Published CSV URLs ─────────────────────────────
+  if (!rawData) {
+    const cfg  = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG) || {};
+    const urls = [cfg.nodes, cfg.progressions, cfg.crossdomain, cfg.tasks, cfg.teacherContext];
+    if (!urls.every(u => !u)) {
+      try {
+        const bust = `&_t=${Date.now()}`;
+        const texts = await Promise.all(
+          urls.map(u => u
+            ? fetch(u + bust, { cache: 'no-store' }).then(r => r.ok ? r.text() : null).catch(() => null)
+            : null)
+        );
+        const names  = ['nodes','progressions','crossdomain','tasks','teacher_context'];
+        rawData = {};
+        texts.forEach((csv, i) => { if (csv) rawData[names[i]] = csvToRows(csv); });
+        if (Object.keys(rawData).length) {
+          console.log('[loader] Loaded from published CSVs.');
+        } else {
+          rawData = null;
+        }
+      } catch (e) {
+        console.warn('[loader] CSV fetch failed:', e.message);
+      }
+    }
+  }
+
+  // ── Tier 3: localStorage cache ─────────────────────────────
+  if (!rawData) {
+    try {
+      const ts     = +(localStorage.getItem(CACHE_TS_KEY) || 0);
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached && (Date.now() - ts) < CACHE_MAX_AGE) {
+        rawData = JSON.parse(cached);
+        console.log('[loader] Loaded from localStorage cache.');
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // ── Tier 4: seed data (data.js) — nothing to do ────────────
+  if (!rawData) {
+    console.log('[loader] Using hardcoded seed data.');
     return;
   }
 
-  const [nodesCsv, progCsv, xdCsv, tasksCsv, ctxCsv] = csvTexts;
+  // ── Apply data ─────────────────────────────────────────────
+  applyRawData(rawData);
 
-  // ── CSV parser (RFC-4180 subset) ────────────────────────────────
-  function parseCSV(text) {
-    if (!text) return [];
-    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    const headers = splitRow(lines[0]);
-    return lines.slice(1).filter(l => l.trim()).map(line => {
-      const vals = splitRow(line);
-      const obj = {};
-      headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
-      return obj;
-    });
-  }
+  // ── Persist to localStorage ────────────────────────────────
+  try {
+    localStorage.setItem(CACHE_KEY,    JSON.stringify(rawData));
+    localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+  } catch (e) { /* quota exceeded — not critical */ }
 
-  function splitRow(line) {
+})();
+
+// ── CSV → rows (array-of-arrays, same shape as sheets-read) ──
+
+function csvToRows(text) {
+  if (!text) return [];
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  return lines.filter(l => l.trim()).map(line => {
     const fields = [];
     let cur = '', inQ = false;
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
       if (inQ) {
-        if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        if (c === '"' && line[i+1] === '"') { cur += '"'; i++; }
         else if (c === '"') inQ = false;
         else cur += c;
       } else if (c === '"') { inQ = true; }
@@ -56,50 +103,68 @@ window.dataReady = (async () => {
     }
     fields.push(cur);
     return fields;
+  });
+}
+
+// ── Apply array-of-arrays data to global variables ───────────
+// First row is always the header row from the Sheet.
+
+function applyRawData(raw) {
+
+  // Helper: convert rows to array-of-objects using first row as headers
+  function toObjects(rows) {
+    if (!rows || rows.length < 2) return [];
+    const headers = rows[0].map(h => (h || '').trim());
+    return rows.slice(1).filter(r => r.some(v => v)).map(r => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (r[i] || '').trim(); });
+      return obj;
+    });
   }
 
-  // ── Build DOMAINS, BIG_IDEAS, MENTAL_ACTIONS, SAMPLES ───────────
-  if (nodesCsv) {
-    const rows = parseCSV(nodesCsv);
+  // ── Nodes ──────────────────────────────────────────────────
+  if (raw.nodes && raw.nodes.length > 1) {
+    const rows   = toObjects(raw.nodes);
     const byTier = { 1: [], 2: [], 3: [], 4: [] };
     for (const r of rows) {
       const node = {
         id:          r.id,
-        label:       r.label,
+        label:       r.label || '',
         tier:        +r.tier,
-        domain:      r.domain,
+        domain:      r.domain || '',
         parent:      r.parent || undefined,
         description: r.description || '',
-        mediaLink:   r.mediaLink  || '',
+        mediaLink:   r.mediaLink   || '',
       };
       if (byTier[node.tier]) byTier[node.tier].push(node);
     }
-    if (byTier[1].length) window.DOMAINS        = byTier[1];
-    if (byTier[2].length) window.BIG_IDEAS       = byTier[2];
-    if (byTier[3].length) window.MENTAL_ACTIONS  = byTier[3];
-    if (byTier[4].length) window.SAMPLES         = byTier[4];
+    if (byTier[1].length) window.DOMAINS       = byTier[1];
+    if (byTier[2].length) window.BIG_IDEAS      = byTier[2];
+    if (byTier[3].length) window.MENTAL_ACTIONS = byTier[3];
+    if (byTier[4].length) window.SAMPLES        = byTier[4];
   }
 
-  // ── Rebuild hierarchy CONNECTIONS from parent fields ───────────
-  // (Always regenerate so layout.js and graph.js get fresh edges)
+  // ── Hierarchy edges (always rebuilt from parent fields) ────
   const hierarchyEdges = [
-    ...BIG_IDEAS.map(bi => ({ from: bi.parent, to: bi.id, type: 'hierarchy', weight: 10 })),
+    ...BIG_IDEAS.map(bi => ({ from: bi.parent, to: bi.id,   type: 'hierarchy', weight: 10 })),
     ...MENTAL_ACTIONS.map(ma => ({ from: ma.parent, to: ma.id, type: 'hierarchy', weight: 8 })),
-    ...SAMPLES.map(s => ({ from: s.parent, to: s.id, type: 'hierarchy', weight: 5 })),
+    ...SAMPLES.map(s  => ({ from: s.parent,  to: s.id,   type: 'hierarchy', weight: 5 })),
   ];
 
-  // ── Append progression edges from Sheets ────────────────────────
-  const progressionEdges = progCsv ? parseCSV(progCsv).map(r => ({
-    from: r.from, to: r.to, type: 'progression',
-    weight: r.weight ? +r.weight : 7,
-    description: r.description || '',
-  })) : CONNECTIONS.filter(c => c.type === 'progression');
+  // ── Progressions ───────────────────────────────────────────
+  const progressionEdges = (raw.progressions && raw.progressions.length > 1)
+    ? toObjects(raw.progressions).map(r => ({
+        from: r.from, to: r.to, type: 'progression',
+        weight: r.weight ? +r.weight : 7,
+        description: r.description || '',
+      }))
+    : CONNECTIONS.filter(c => c.type === 'progression');
 
   window.CONNECTIONS = [...hierarchyEdges, ...progressionEdges];
 
-  // ── Cross-domain connections ────────────────────────────────────
-  if (xdCsv) {
-    window.CROSS_DOMAIN = parseCSV(xdCsv).map(r => ({
+  // ── Cross-domain ───────────────────────────────────────────
+  if (raw.crossdomain && raw.crossdomain.length > 1) {
+    window.CROSS_DOMAIN = toObjects(raw.crossdomain).map(r => ({
       id:          r.id,
       from:        r.from,
       to:          r.to,
@@ -109,31 +174,104 @@ window.dataReady = (async () => {
     }));
   }
 
-  // ── Tasks ────────────────────────────────────────────────────────
-  if (tasksCsv) {
-    const taskRows = parseCSV(tasksCsv);
-    // Build context lookup from teacher_context tab
+  // ── Tasks + teacher context ────────────────────────────────
+  if (raw.tasks && raw.tasks.length > 1) {
     const ctxByTask = {};
-    if (ctxCsv) {
-      for (const r of parseCSV(ctxCsv)) {
+    if (raw.teacher_context && raw.teacher_context.length > 1) {
+      for (const r of toObjects(raw.teacher_context)) {
         if (!ctxByTask[r.taskId]) ctxByTask[r.taskId] = { before: [], after: [] };
         const entry = { maId: r.maId, type: r.type, content: r.content };
         if (r.stage === 'before') ctxByTask[r.taskId].before.push(entry);
         else                      ctxByTask[r.taskId].after.push(entry);
       }
     }
-
-    window.TASKS = taskRows.map(r => ({
+    window.TASKS = toObjects(raw.tasks).map(r => ({
       id:            r.id,
       label:         r.label,
       category:      r.category,
-      domain:        r.domain || '',
-      pdfLink:       r.pdfLink || '',
+      domain:        r.domain    || '',
+      pdfLink:       r.pdfLink   || '',
       targetMAs:     r.targetMAs ? r.targetMAs.split('|').filter(Boolean) : [],
       beforeContext: ctxByTask[r.id]?.before || [],
       afterContext:  ctxByTask[r.id]?.after  || [],
     }));
   }
+}
 
-  console.log('[loader] Data loaded from Google Sheets.');
-})();
+// ── Public helpers used by editor.js for cache updates ───────
+
+window.galaxyCache = {
+
+  // Call after any in-memory edit to persist it to localStorage
+  save() {
+    try {
+      const raw = {
+        nodes:           buildRawNodes(),
+        progressions:    buildRawProgressions(),
+        crossdomain:     buildRawCrossDomain(),
+        tasks:           buildRawTasks(),
+        teacher_context: buildRawTeacherContext(),
+      };
+      localStorage.setItem(CACHE_KEY,    JSON.stringify(raw));
+      localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+    } catch (e) { /* quota */ }
+  },
+
+  // Download all current data as CSV files (one per tab)
+  exportCSVs() {
+    const tabs = [
+      { name: 'nodes',           rows: buildRawNodes() },
+      { name: 'progressions',    rows: buildRawProgressions() },
+      { name: 'crossdomain',     rows: buildRawCrossDomain() },
+      { name: 'tasks',           rows: buildRawTasks() },
+      { name: 'teacher_context', rows: buildRawTeacherContext() },
+    ];
+    tabs.forEach(({ name, rows }) => {
+      const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a    = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `galaxy-${name}-${new Date().toISOString().slice(0,10)}.csv`,
+      });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    });
+  },
+};
+
+// ── Serialise in-memory data back to rows-of-arrays ──────────
+
+function buildRawNodes() {
+  const header = ['id','tier','domain','parent','label','description','mediaLink'];
+  const all = [...(DOMAINS||[]), ...(BIG_IDEAS||[]), ...(MENTAL_ACTIONS||[]), ...(SAMPLES||[])];
+  return [header, ...all.map(n => [n.id, n.tier, n.domain, n.parent||'', n.label||'', n.description||'', n.mediaLink||''])];
+}
+
+function buildRawProgressions() {
+  const header = ['from','to','type','weight'];
+  const rows   = (CONNECTIONS||[]).filter(c => c.type === 'progression')
+    .map(c => [c.from, c.to, c.type, c.weight||7]);
+  return [header, ...rows];
+}
+
+function buildRawCrossDomain() {
+  const header = ['id','from','to','strength','description'];
+  return [header, ...(CROSS_DOMAIN||[]).map(x => [x.id, x.from, x.to, x.strength||5, x.description||''])];
+}
+
+function buildRawTasks() {
+  const header = ['id','label','category','domain','pdfLink','targetMAs'];
+  return [header, ...(TASKS||[]).map(t => [t.id, t.label, t.category, t.domain||'', t.pdfLink||'', (t.targetMAs||[]).join('|')])];
+}
+
+function buildRawTeacherContext() {
+  const header = ['taskId','stage','maId','type','content'];
+  const rows   = [];
+  for (const t of (TASKS||[])) {
+    for (const c of (t.beforeContext||[])) rows.push([t.id,'before',c.maId,c.type,c.content]);
+    for (const c of (t.afterContext||[]))  rows.push([t.id,'after', c.maId,c.type,c.content]);
+  }
+  return [header, ...rows];
+}
