@@ -121,60 +121,162 @@ function openDescEditor(nodeId, triggerBtn) {
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
-// ---- Sample lightbox -------------------------------------------
+// ---- Sample gallery --------------------------------------------
+// openSampleGallery(maId, startSampleId?)
+//   maId          — the parent MA node whose samples to show
+//   startSampleId — optional; which sample to show first (defaults to first)
 
-function openSampleLightbox(sampleId) {
-  const sample = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).find(s => s.id === sampleId);
-  if (!sample || !sample.mediaLink) return;
+const GALLERY_SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
+let _gallerySamples = [];   // current gallery's sample list
+let _galleryIdx     = 0;    // index into _gallerySamples
 
-  const SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
-  const imgSrc = sample.mediaLink.startsWith('data:') ? sample.mediaLink : `${SAMPLES_BASE}${sample.mediaLink}`;
+function openSampleGallery(maId, startSampleId) {
+  _gallerySamples = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).filter(s => s.parent === maId);
+  if (!_gallerySamples.length) return;
 
-  // Build or reuse overlay
-  let overlay = document.getElementById('sample-lightbox');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'sample-lightbox';
-    overlay.innerHTML = `
-      <div id="sample-lightbox-inner">
-        <button id="sample-lightbox-close" title="Close (Esc)">✕</button>
-        <img id="sample-lightbox-img" alt="Student work sample" title="Click to download" />
-        <p id="sample-lightbox-desc"></p>
-        <p class="sample-lightbox-hint">Click image to download</p>
-      </div>`;
-    document.body.appendChild(overlay);
+  _galleryIdx = startSampleId
+    ? Math.max(0, _gallerySamples.findIndex(s => s.id === startSampleId))
+    : 0;
 
-    document.getElementById('sample-lightbox-close').addEventListener('click', closeSampleLightbox);
-    overlay.addEventListener('click', e => { if (e.target === overlay) closeSampleLightbox(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSampleLightbox(); });
-  }
+  _buildGalleryOverlay();
+  _renderGallerySlide();
 
-  const img  = document.getElementById('sample-lightbox-img');
-  const desc = document.getElementById('sample-lightbox-desc');
-  img.src    = imgSrc;
-  desc.textContent = sample.description || '';
-
-  // Click image → download
-  img.onclick = () => {
-    const a = Object.assign(document.createElement('a'), {
-      href:     imgSrc,
-      download: sample.mediaLink.startsWith('data:')
-        ? `sample-${sampleId}.jpg`
-        : sample.mediaLink.split('/').pop(),
-    });
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
+  const overlay = document.getElementById('sample-gallery');
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
 
-function closeSampleLightbox() {
-  const overlay = document.getElementById('sample-lightbox');
+function _buildGalleryOverlay() {
+  if (document.getElementById('sample-gallery')) return;
+
+  const el = document.createElement('div');
+  el.id = 'sample-gallery';
+  el.innerHTML = `
+    <div id="sg-inner">
+      <div id="sg-header">
+        <span id="sg-counter"></span>
+        <span id="sg-ma-label"></span>
+        <button id="sg-close" title="Close (Esc)">✕</button>
+      </div>
+      <div id="sg-stage">
+        <button id="sg-prev" class="sg-nav" title="Previous">‹</button>
+        <div id="sg-img-wrap">
+          <img id="sg-img" alt="Student work sample" title="Click to download" />
+          <div id="sg-no-img">💠 No image uploaded for this sample</div>
+        </div>
+        <button id="sg-next" class="sg-nav" title="Next">›</button>
+      </div>
+      <div id="sg-desc"></div>
+      <div id="sg-edit-bar" style="display:none">
+        <button id="sg-delete-btn" class="sg-edit-btn sg-delete">🗑️ Remove this sample</button>
+        <button id="sg-add-btn"    class="sg-edit-btn sg-add">＋ Add another sample</button>
+      </div>
+      <div id="sg-hint">Click image to download • Use ← → keys to navigate</div>
+    </div>`;
+  document.body.appendChild(el);
+
+  document.getElementById('sg-close').addEventListener('click', closeSampleGallery);
+  el.addEventListener('click', e => { if (e.target === el) closeSampleGallery(); });
+
+  document.getElementById('sg-prev').addEventListener('click', () => _galleryNav(-1));
+  document.getElementById('sg-next').addEventListener('click', () => _galleryNav(+1));
+
+  document.addEventListener('keydown', _galleryKeyHandler);
+}
+
+function _galleryKeyHandler(e) {
+  const overlay = document.getElementById('sample-gallery');
+  if (!overlay?.classList.contains('open')) return;
+  if (e.key === 'Escape')     closeSampleGallery();
+  if (e.key === 'ArrowLeft')  _galleryNav(-1);
+  if (e.key === 'ArrowRight') _galleryNav(+1);
+}
+
+function _galleryNav(dir) {
+  const len = _gallerySamples.length;
+  _galleryIdx = (_galleryIdx + dir + len) % len;
+  _renderGallerySlide();
+}
+
+function _renderGallerySlide() {
+  const sample  = _gallerySamples[_galleryIdx];
+  if (!sample) return;
+
+  const imgEl   = document.getElementById('sg-img');
+  const noImgEl = document.getElementById('sg-no-img');
+  const descEl  = document.getElementById('sg-desc');
+  const counter = document.getElementById('sg-counter');
+  const maLabel = document.getElementById('sg-ma-label');
+  const editBar = document.getElementById('sg-edit-bar');
+  const prevBtn = document.getElementById('sg-prev');
+  const nextBtn = document.getElementById('sg-next');
+
+  const total   = _gallerySamples.length;
+  counter.textContent = `${_galleryIdx + 1} of ${total}`;
+
+  // MA label
+  const ma = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === sample.parent);
+  maLabel.textContent = ma ? (ma.label || ma.id).replace(/\n/g, ' ') : (sample.parent || '');
+
+  // Show/hide nav arrows
+  prevBtn.style.visibility = total > 1 ? '' : 'hidden';
+  nextBtn.style.visibility = total > 1 ? '' : 'hidden';
+
+  // Image
+  if (sample.mediaLink) {
+    const src = sample.mediaLink.startsWith('data:') ? sample.mediaLink : `${GALLERY_SAMPLES_BASE}${sample.mediaLink}`;
+    imgEl.src           = src;
+    imgEl.style.display = '';
+    noImgEl.style.display = 'none';
+    imgEl.onclick = () => _downloadGallerySample(sample, src);
+  } else {
+    imgEl.src           = '';
+    imgEl.style.display = 'none';
+    noImgEl.style.display = '';
+  }
+
+  // Description
+  descEl.innerHTML = sample.description
+    ? ((typeof marked !== 'undefined') ? marked.parse(sample.description) : sample.description.replace(/\n/g,'<br>'))
+    : '<em style="color:var(--text-dim)">No description.</em>';
+
+  // Edit controls
+  const isEdit = typeof editorActive !== 'undefined' && editorActive;
+  editBar.style.display = isEdit ? '' : 'none';
+  if (isEdit) {
+    document.getElementById('sg-delete-btn').onclick = () => {
+      closeSampleGallery();
+      if (typeof deleteSample === 'function') deleteSample(sample.id);
+    };
+    document.getElementById('sg-add-btn').onclick = () => {
+      closeSampleGallery();
+      if (typeof openUploadPanel === 'function') openUploadPanel(sample.parent);
+    };
+  }
+}
+
+function _downloadGallerySample(sample, src) {
+  const a = Object.assign(document.createElement('a'), {
+    href:     src,
+    download: sample.mediaLink?.startsWith('data:')
+      ? `sample-${sample.id}.jpg`
+      : (sample.mediaLink || sample.id),
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function closeSampleGallery() {
+  const overlay = document.getElementById('sample-gallery');
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// Legacy alias so any old onclick="openSampleLightbox(...)" still works
+function openSampleLightbox(sampleId) {
+  const s = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).find(x => x.id === sampleId);
+  if (s) openSampleGallery(s.parent || s.parent_node, sampleId);
 }
 
 // ---- App init --------------------------------------------------

@@ -662,6 +662,7 @@ function openUploadPanel(nodeId) {
   document.getElementById('uf-preview').style.display     = 'none';
   document.getElementById('uf-preview').src               = '';
   document.getElementById('uf-save-btn').style.display    = 'none';
+  document.getElementById('uf-save-btn').disabled         = false;   // ← reset from prior upload
   document.getElementById('uf-status').textContent        = '';
   document.getElementById('uf-status').className          = 'ef-status';
   document.getElementById('uf-file-input').value          = '';

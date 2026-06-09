@@ -211,31 +211,77 @@ function buildDetailCardHTML(data) {
     xdHtml = `<div class="detail-section"><div class="detail-section-title">🌌 Cross-Domain Connections</div>${connItems}</div>`;
   }
 
-  // Sample image — served from GitHub raw URL so new uploads appear without a Netlify redeploy
   const SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
+  const inEditMode   = (typeof editorActive !== 'undefined' && editorActive);
+
+  // ── Tier-4 sample node: show image + "View in gallery" ────────
   let mediaHtml = '';
   if (tier === 4) {
-    const inEditMode = (typeof editorActive !== 'undefined' && editorActive);
-    const sampleDelBtn = inEditMode
-      ? `<button class="sample-delete-btn" onclick="deleteSample('${data.id}')" title="Remove this sample">🗑️ Remove sample</button>`
-      : '';
     if (data.mediaLink) {
-      // data: URLs (local dev) used as-is; filenames get the GitHub raw base prepended
       const imgSrc = data.mediaLink.startsWith('data:') ? data.mediaLink : `${SAMPLES_BASE}${data.mediaLink}`;
+      const parentId = data.parent_node || data.parent || '';
       mediaHtml = `<div class="detail-section">
         <img class="sample-img" src="${imgSrc}" alt="Student work sample"
-             style="cursor:zoom-in" onclick="openSampleLightbox('${data.id}')" />
-        ${sampleDelBtn}
+             style="cursor:zoom-in"
+             onclick="openSampleGallery('${parentId}','${data.id}')" />
+        <div class="sample-card-actions">
+          <button class="sample-gallery-btn" onclick="openSampleGallery('${parentId}','${data.id}')">⊞ View all samples</button>
+          ${inEditMode ? `<button class="sample-delete-btn" onclick="deleteSample('${data.id}')">🗑️ Remove</button>` : ''}
+        </div>
       </div>`;
     } else if (inEditMode) {
-      mediaHtml = `<div class="detail-section">${sampleDelBtn}</div>`;
+      mediaHtml = `<div class="detail-section">
+        <div class="sample-card-actions">
+          <button class="sample-delete-btn" onclick="deleteSample('${data.id}')">🗑️ Remove sample</button>
+        </div>
+      </div>`;
     }
   }
 
-  // Upload sample button — visible only in edit mode on MA nodes
-  const uploadBtn = (tier === 3 && typeof editorActive !== 'undefined' && editorActive)
-    ? `<div class="detail-section"><button class="upload-sample-btn" onclick="openUploadPanel('${data.id}')">📷 Add Sample Image</button></div>`
-    : '';
+  // ── Tier-3 MA node: thumbnail strip of all child samples ──────
+  let uploadBtn = '';
+  if (tier === 3) {
+    const maSamples = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).filter(s => s.parent === data.id);
+    const hasSamples = maSamples.length > 0;
+
+    const thumbsHtml = maSamples.map(s => {
+      const src = s.mediaLink
+        ? (s.mediaLink.startsWith('data:') ? s.mediaLink : `${SAMPLES_BASE}${s.mediaLink}`)
+        : '';
+      const thumb = src
+        ? `<img class="sample-thumb" src="${src}" alt="Sample" title="${(s.description||'').slice(0,60)}"
+               onclick="openSampleGallery('${data.id}','${s.id}')" />`
+        : `<div class="sample-thumb sample-thumb-empty" onclick="openSampleGallery('${data.id}','${s.id}')">💠</div>`;
+      const rmBtn = inEditMode
+        ? `<button class="sample-thumb-rm" onclick="event.stopPropagation();deleteSample('${s.id}')" title="Remove">✕</button>`
+        : '';
+      return `<div class="sample-thumb-wrap">${thumb}${rmBtn}</div>`;
+    }).join('');
+
+    const countBadge = hasSamples
+      ? `<span class="sample-count-badge">${maSamples.length} sample${maSamples.length === 1 ? '' : 's'}</span>`
+      : '';
+
+    const addBtn = inEditMode
+      ? `<button class="upload-sample-btn" onclick="openUploadPanel('${data.id}')">＋ Add sample</button>`
+      : '';
+
+    const viewAllBtn = hasSamples
+      ? `<button class="sample-view-all-btn" onclick="openSampleGallery('${data.id}')">⊞ View gallery</button>`
+      : '';
+
+    uploadBtn = `<div class="detail-section samples-section">
+      <div class="detail-section-title">Student Work Samples ${countBadge}</div>
+      ${hasSamples
+        ? `<div class="sample-thumb-row">${thumbsHtml}</div>
+           <div class="sample-section-actions">${viewAllBtn}${addBtn}</div>`
+        : `<div class="sample-empty-state">${inEditMode
+            ? `<p class="sample-empty-hint">No samples yet.</p>${addBtn}`
+            : `<p class="sample-empty-hint">No student work samples added yet.</p>`
+          }</div>`
+      }
+    </div>`;
+  }
 
   const descRendered = (typeof marked !== 'undefined' && data.description)
     ? marked.parse(data.description)
