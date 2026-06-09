@@ -75,6 +75,11 @@ window.dataReady = (async () => {
   // ── Apply data ─────────────────────────────────────────────
   applyRawData(rawData);
 
+  // ── Dev filler: inject placeholder content on localhost so ─
+  // ── the UI slots are populated for design/test iteration.  ─
+  const _isLocal = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
+  if (_isLocal) injectDevFiller();
+
   // ── Persist to localStorage (deferred so it doesn't block the render) ─
   const _serialised = JSON.stringify(rawData);
   const _ts         = String(Date.now());
@@ -278,4 +283,91 @@ function buildRawTeacherContext() {
     for (const c of (t.afterContext||[]))  rows.push([t.id,'after', c.maId,c.type,c.content]);
   }
   return [header, ...rows];
+}
+
+// ── Dev filler ────────────────────────────────────────────────
+// Runs only on localhost. Populates empty descriptions and teacher
+// context so every UI slot shows representative content.
+// All filler strings begin with the standard disclaimer prefix.
+
+function injectDevFiller() {
+  const FILLER = 'This is filler/example text so we can see how the program works — please replace. ';
+
+  const TYPES_BEFORE = ['Purposeful Question', 'Anticipated Model', 'Launch Prompt', 'Pedagogical Note'];
+  const TYPES_AFTER  = ['Reflection Prompt', 'Intervention', 'Scaffolding', 'Extension'];
+
+  const BEFORE_TEMPLATES = [
+    (ma, label) => ({
+      type: 'Purposeful Question',
+      content: `${FILLER}[Before Lesson — Purposeful Question for ${label}]\n\nAsk students: "What is changing in this situation, and what stays the same?" Listen for whether students identify the relevant quantities before connecting to ${label.toLowerCase()} thinking.`,
+    }),
+    (ma, label) => ({
+      type: 'Anticipated Model',
+      content: `${FILLER}[Before Lesson — Anticipated Student Model for ${label}]\n\nMany students will draw a table of values first. Anticipate that some will skip the "covarying" step and jump straight to a rule. Watch for students who only list outputs without tracking the input-output relationship.`,
+    }),
+    (ma, label) => ({
+      type: 'Launch Prompt',
+      content: `${FILLER}[Before Lesson — Launch Prompt for ${label}]\n\nBegin with a physical or contextual scenario before introducing any symbolic representation. Ask students to describe what they notice in plain language. This activates the mental action without anchoring to a specific representation too soon.`,
+    }),
+    (ma, label) => ({
+      type: 'Pedagogical Note',
+      content: `${FILLER}[Before Lesson — Pedagogical Note for ${label}]\n\nStudents at this mental action level are often moving from additive to multiplicative reasoning. Look for language like "it goes up by the same amount" as a sign they are on track. Correct, but push for more precision about *what* is changing and *by how much*.`,
+    }),
+  ];
+
+  const AFTER_TEMPLATES = [
+    (ma, label) => ({
+      type: 'Reflection Prompt',
+      content: `${FILLER}[After Lesson — Reflection Prompt for ${label}]\n\nAsk students to write one sentence about what they noticed about how the two quantities related. Did they describe a pattern? A rule? A direction? Use their language as evidence of where each student is on the mental action progression.`,
+    }),
+    (ma, label) => ({
+      type: 'Intervention',
+      content: `${FILLER}[After Lesson — Intervention for ${label}]\n\nFor students who struggled: return to a concrete context and ask "As __ goes up, what happens to __?" Avoid the equation first. Help them verbalize the relationship before formalizing it. A double number line or covariation table may help bridge the gap.`,
+    }),
+    (ma, label) => ({
+      type: 'Scaffolding',
+      content: `${FILLER}[After Lesson — Scaffolding for ${label}]\n\nIf students got stuck on representation rather than relationship: strip away the numbers and ask about direction first ("Does y increase or decrease as x increases?"). Once direction is clear, reintroduce the numerical context.`,
+    }),
+    (ma, label) => ({
+      type: 'Extension',
+      content: `${FILLER}[After Lesson — Extension for ${label}]\n\nFor students who are ready to move further: pose a scenario where the relationship is NOT linear. Ask them to describe what would be different in their table, graph, or equation. This pushes toward a more general mental action for function behavior.`,
+    }),
+  ];
+
+  // ── Fill empty node descriptions ─────────────────────────────
+  const TIER_NAMES = { 1: 'Domain', 2: 'Big Idea', 3: 'Mental Action', 4: 'Sample' };
+  const allNodes = [...(DOMAINS||[]), ...(BIG_IDEAS||[]), ...(MENTAL_ACTIONS||[])];
+  allNodes.forEach((node, i) => {
+    if (!node.description) {
+      const tierName = TIER_NAMES[node.tier] || 'Node';
+      node.description =
+        `${FILLER}[${tierName} Description — ${node.label}]\n\n` +
+        `This ${tierName.toLowerCase()} represents an important mathematical idea within the galaxy. ` +
+        `When authored, this description will explain the core concept, give examples of student thinking at this level, ` +
+        `and connect to adjacent ideas in the progression. Teachers will read this to orient themselves before selecting a task.`;
+    }
+  });
+
+  // ── Fill empty teacher context for tasks ─────────────────────
+  (TASKS || []).forEach((task, ti) => {
+    const mas = task.targetMAs || [];
+    if (!task.beforeContext || task.beforeContext.length === 0) {
+      task.beforeContext = mas.map((maId, i) => {
+        const ma    = (MENTAL_ACTIONS || []).find(m => m.id === maId);
+        const label = ma ? (ma.label || maId) : maId;
+        const tmpl  = BEFORE_TEMPLATES[(ti + i) % BEFORE_TEMPLATES.length];
+        return { maId, ...tmpl(maId, label) };
+      });
+    }
+    if (!task.afterContext || task.afterContext.length === 0) {
+      task.afterContext = mas.map((maId, i) => {
+        const ma    = (MENTAL_ACTIONS || []).find(m => m.id === maId);
+        const label = ma ? (ma.label || maId) : maId;
+        const tmpl  = AFTER_TEMPLATES[(ti + i + 2) % AFTER_TEMPLATES.length];
+        return { maId, ...tmpl(maId, label) };
+      });
+    }
+  });
+
+  console.log('[loader] Dev filler injected for localhost testing.');
 }

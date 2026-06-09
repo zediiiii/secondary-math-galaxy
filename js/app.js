@@ -99,27 +99,22 @@ function openDescEditor(nodeId, triggerBtn) {
   const saveBtn  = wrap.querySelector('.desc-save-btn');
   const statusEl = wrap.querySelector('.desc-save-status');
 
-  saveBtn.addEventListener('click', async () => {
+  saveBtn.addEventListener('click', () => {
     const newText = ta.value.trim();
-    saveBtn.disabled       = true;
-    statusEl.textContent   = 'Saving…';
-    statusEl.className     = 'desc-save-status ef-status ef-info';
-    try {
-      await apiPost({ op: 'updateCell', nodeId, col: 'description', value: newText });
-      // Update in-memory so the re-render picks it up
-      if (nodeData) nodeData.description = newText;
-      wrap.remove();
-      const rendered = (typeof marked !== 'undefined' && newText)
-        ? marked.parse(newText)
-        : newText.replace(/\n/g, '<br>');
-      descEl.innerHTML     = rendered;
-      descEl.style.display = '';
-      triggerBtn.style.display = '';
-    } catch (err) {
-      statusEl.textContent = '❌ ' + err.message;
-      statusEl.className   = 'desc-save-status ef-status ef-error';
-      saveBtn.disabled     = false;
+    // Update in-memory immediately
+    if (nodeData) nodeData.description = newText;
+    // Queue the Sheet write — committed via the commit bar
+    if (typeof queueOp === 'function') {
+      queueOp({ op: 'updateCell', nodeId, col: 'description', value: newText });
     }
+    if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+    wrap.remove();
+    const rendered = (typeof marked !== 'undefined' && newText)
+      ? marked.parse(newText)
+      : newText.replace(/\n/g, '<br>');
+    descEl.innerHTML     = rendered;
+    descEl.style.display = '';
+    triggerBtn.style.display = '';
   });
 
   ta.focus();

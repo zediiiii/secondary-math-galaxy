@@ -23,6 +23,135 @@ let uploadNodeId   = null;
 let pendingFile    = null;
 let ctxRowCounter  = 0;
 
+// ── Pending-ops queue ─────────────────────────────────────────
+// All Sheet writes are queued here and executed together on commit.
+let pendingOps = [];
+
+function queueOp(op) {
+  // updateCell: deduplicate same nodeId+col so re-edits don't double-write
+  if (op.op === 'updateCell') {
+    const idx = pendingOps.findIndex(p => p.op === 'updateCell' && p.nodeId === op.nodeId && p.col === op.col);
+    if (idx >= 0) { pendingOps[idx] = op; }
+    else          { pendingOps.push(op); }
+  } else {
+    pendingOps.push(op);
+  }
+  updateCommitBar();
+}
+
+function updateCommitBar() {
+  const countEl  = document.getElementById('ecb-count');
+  const btn      = document.getElementById('ecb-commit-btn');
+  const dotEl    = document.getElementById('ecb-dot');
+  if (countEl) countEl.textContent = pendingOps.length;
+  if (btn)     btn.disabled        = pendingOps.length === 0;
+  if (dotEl)   dotEl.style.display = pendingOps.length > 0 ? '' : 'none';
+}
+
+function updateCommitTimestamps() {
+  const loadTs   = +(localStorage.getItem('galaxy_data_cache_ts') || 0);
+  const commitTs = localStorage.getItem('galaxy_last_commit_ts');
+  const fmt = ts => {
+    if (!ts) return 'never';
+    const d = new Date(+ts || ts);
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+  const loadEl   = document.getElementById('ecb-load-ts');
+  const commitEl = document.getElementById('ecb-commit-ts');
+  if (loadEl)   loadEl.textContent   = loadTs   ? fmt(loadTs)   : 'unknown';
+  if (commitEl) commitEl.textContent = commitTs ? fmt(commitTs) : 'never';
+}
+
+function buildCommitBar() {
+  if (document.getElementById('edit-commit-bar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'edit-commit-bar';
+  bar.innerHTML = `
+    <div class="ecb-left">
+      <span class="ecb-dot" id="ecb-dot" style="display:none">●</span>
+      <span class="ecb-mode-label">✏️ Edit Mode</span>
+      <span class="ecb-pending"><strong id="ecb-count">0</strong> pending</span>
+    </div>
+    <div class="ecb-center">
+      <span id="ecb-progress" class="ecb-progress-msg"></span>
+    </div>
+    <div class="ecb-right">
+      <span class="ecb-ts-block">
+        <span class="ecb-ts-label">Last load</span>
+        <time id="ecb-load-ts" class="ecb-ts-val">—</time>
+      </span>
+      <span class="ecb-ts-block">
+        <span class="ecb-ts-label">Last commit</span>
+        <time id="ecb-commit-ts" class="ecb-ts-val">—</time>
+      </span>
+      <button id="ecb-commit-btn" class="ecb-commit" disabled>💾 Commit to Sheets</button>
+    </div>`;
+  document.body.appendChild(bar);
+  document.getElementById('ecb-commit-btn').addEventListener('click', commitPendingOps);
+}
+
+async function commitPendingOps() {
+  if (pendingOps.length === 0) return;
+  const isLocal = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
+  const btn      = document.getElementById('ecb-commit-btn');
+  const progress = document.getElementById('ecb-progress');
+  const setMsg   = (msg, cls = '') => { if (progress) { progress.textContent = msg; progress.className = 'ecb-progress-msg' + (cls ? ' ' + cls : ''); } };
+
+  if (btn) btn.disabled = true;
+
+  // ── Collision check (production only) ────────────────────────
+  if (!isLocal) {
+    setMsg('Checking for conflicts…');
+    try {
+      const res = await fetch('/.netlify/functions/sheets-check');
+      if (res.ok) {
+        const { modifiedTime } = await res.json();
+        const loadTs = +(localStorage.getItem('galaxy_data_cache_ts') || 0);
+        if (new Date(modifiedTime).getTime() > loadTs) {
+          const proceed = confirm(
+            '⚠️ The spreadsheet was modified after you last loaded data.\n\n' +
+            'Someone else may have made changes. Committing now could overwrite them.\n\n' +
+            'Proceed anyway?'
+          );
+          if (!proceed) {
+            setMsg('Commit cancelled — reload data first to be safe.', 'ecb-warn');
+            if (btn) btn.disabled = false;
+            return;
+          }
+        }
+      }
+    } catch (e) { /* check unavailable — proceed */ }
+  }
+
+  // ── Execute ops sequentially ──────────────────────────────────
+  const ops = [...pendingOps];
+  pendingOps = [];
+  updateCommitBar();
+
+  let done = 0;
+  for (const op of ops) {
+    setMsg(`Committing ${done + 1} / ${ops.length}…`);
+    try {
+      await apiPost(op);
+      done++;
+    } catch (err) {
+      // Re-queue everything that didn't run
+      pendingOps = [...ops.slice(done), ...pendingOps];
+      updateCommitBar();
+      setMsg(`❌ Failed on step ${done + 1}: ${err.message}`, 'ecb-error');
+      if (btn) btn.disabled = false;
+      return;
+    }
+  }
+
+  // ── Success ───────────────────────────────────────────────────
+  const now = new Date().toISOString();
+  localStorage.setItem('galaxy_last_commit_ts', now);
+  updateCommitTimestamps();
+  setMsg(`✅ ${done} change${done === 1 ? '' : 's'} committed to Sheets.`, 'ecb-ok');
+  setTimeout(() => setMsg(''), 4000);
+}
+
 // ── Bootstrap ────────────────────────────────────────────────
 
 function initEditor() {
@@ -70,10 +199,23 @@ function activateEditMode() {
   document.getElementById('add-task-btn').style.display = '';
   const exportBtn = document.getElementById('export-data-btn');
   if (exportBtn) exportBtn.style.display = '';
+  buildCommitBar();
+  document.getElementById('edit-commit-bar').classList.add('visible');
+  updateCommitBar();
+  updateCommitTimestamps();
   if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
 }
 
 function deactivateEditMode() {
+  if (pendingOps.length > 0) {
+    const ok = confirm(
+      `You have ${pendingOps.length} uncommitted change${pendingOps.length === 1 ? '' : 's'}.\n\n` +
+      'Exit edit mode and discard them? (Your in-app changes will remain until you reload.)'
+    );
+    if (!ok) return;
+    pendingOps = [];
+    updateCommitBar();
+  }
   editorActive = false;
   document.getElementById('edit-mode-btn').textContent = '🔒';
   document.getElementById('edit-mode-btn').title = 'Enable Edit Mode';
@@ -81,6 +223,8 @@ function deactivateEditMode() {
   document.getElementById('add-task-btn').style.display = 'none';
   const exportBtn = document.getElementById('export-data-btn');
   if (exportBtn) exportBtn.style.display = 'none';
+  const bar = document.getElementById('edit-commit-bar');
+  if (bar) bar.classList.remove('visible');
   if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
   closeTaskForm();
   closeUploadPanel();
@@ -391,11 +535,11 @@ async function saveTask() {
   if (typeof galaxyCache !== 'undefined') galaxyCache.save();
   taskStatus('✅ Added! Syncing to Sheet…', 'ok');
 
-  // ── Background Sheets write ──────────────────────────────────
-  apiPost({ op: 'append', tab: 'tasks', row: taskRow })
-    .then(() => Promise.all(ctxRows.map(row => apiPost({ op: 'append', tab: 'teacher_context', row }))))
-    .then(() => { taskStatus('✅ Saved & synced.', 'ok'); setTimeout(closeTaskForm, 2000); })
-    .catch(err => taskStatus('⚠️ Added locally — Sheet sync failed: ' + err.message, 'warn'));
+  // ── Queue Sheets writes (committed later via the commit bar) ──
+  queueOp({ op: 'append', tab: 'tasks', row: taskRow });
+  ctxRows.forEach(row => queueOp({ op: 'append', tab: 'teacher_context', row }));
+  taskStatus('✅ Added locally — commit to save to Sheets.', 'ok');
+  setTimeout(closeTaskForm, 2000);
 
   cy.nodes('[tier=3]').removeClass('editor-selected');
   document.getElementById('tf-save-btn').disabled = false;
@@ -576,13 +720,9 @@ async function saveImage() {
         if (typeof renderSelectionPanels === 'function') renderSelectionPanels();
       }, 420);
 
-      // 4 — Sheet write in background (production only; no-op locally)
+      // 4 — Queue Sheet write (skipped locally — data URL can't be stored in Sheets)
       if (!isLocal) {
-        apiPost({
-          op:  'append',
-          tab: 'nodes',
-          row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
-        }).catch(err => console.warn('[editor] Sample Sheet sync failed:', err.message));
+        queueOp({ op: 'append', tab: 'nodes', row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename] });
       }
 
     } catch (err) {
@@ -614,9 +754,8 @@ async function deleteTask(taskId) {
   if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
   if (typeof galaxyCache !== 'undefined') galaxyCache.save();
 
-  // Background Sheet row clear
-  apiPost({ op: 'deleteRow', tab: 'tasks', id: taskId })
-    .catch(err => console.warn('[editor] deleteTask Sheet sync failed:', err.message));
+  // Queue Sheet row clear
+  queueOp({ op: 'deleteRow', tab: 'tasks', id: taskId });
 }
 
 // ── Delete sample ─────────────────────────────────────────────
@@ -648,9 +787,8 @@ async function deleteSample(sampleId) {
 
   if (typeof galaxyCache !== 'undefined') galaxyCache.save();
 
-  // Background Sheet row clear
-  apiPost({ op: 'deleteRow', tab: 'nodes', id: sampleId })
-    .catch(err => console.warn('[editor] deleteSample Sheet sync failed:', err.message));
+  // Queue Sheet row clear
+  queueOp({ op: 'deleteRow', tab: 'nodes', id: sampleId });
 }
 
 // ── Shared API helper ─────────────────────────────────────────
