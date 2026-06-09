@@ -192,10 +192,11 @@ function buildDetailCardHTML(data) {
     xdHtml = `<div class="detail-section"><div class="detail-section-title">🌌 Cross-Domain Connections</div>${connItems}</div>`;
   }
 
-  // Sample image
+  // Sample image — served from GitHub raw URL so new uploads appear without a Netlify redeploy
+  const SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
   let mediaHtml = '';
   if (tier === 4 && data.mediaLink) {
-    mediaHtml = `<div class="detail-section"><img class="sample-img" src="public/samples/${data.mediaLink}" alt="Student work sample" /></div>`;
+    mediaHtml = `<div class="detail-section"><img class="sample-img" src="${SAMPLES_BASE}${data.mediaLink}" alt="Student work sample" /></div>`;
   }
 
   // Upload sample button — visible only in edit mode on MA nodes

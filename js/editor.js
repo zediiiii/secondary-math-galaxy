@@ -496,7 +496,24 @@ async function saveImage() {
         row: [sampleId, 4, domain, uploadNodeId, '', description, filename],
       });
 
-      document.getElementById('uf-status').textContent = '✅ Sample saved! Reload the page to see it.';
+      // 3 — add to in-memory data + graph so it appears immediately without reload
+      const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: '', description, mediaLink: filename };
+      if (typeof SAMPLES !== 'undefined') SAMPLES.push(newSample);
+      if (typeof cy !== 'undefined' && typeof LAYOUT !== 'undefined' && typeof DOMAIN_COLORS !== 'undefined') {
+        const maPos  = LAYOUT.positions[uploadNodeId] || { x: 0, y: 0 };
+        const angle  = Math.atan2(maPos.y, maPos.x);
+        const r      = 820;
+        const pos    = { x: r * Math.cos(angle), y: r * Math.sin(angle) };
+        cy.add({
+          group: 'nodes',
+          data: { id: sampleId, label: '', tier: 4, domain, parent_node: uploadNodeId, description, mediaLink: filename },
+          position: pos,
+          style: { 'background-color': DOMAIN_COLORS[domain] || '#4fc3f7' },
+        });
+        cy.add({ group: 'edges', data: { id: `e_${sampleId}`, source: uploadNodeId, target: sampleId, type: 'hierarchy' } });
+      }
+
+      document.getElementById('uf-status').textContent = '✅ Sample saved! It appears on the graph now.';
       document.getElementById('uf-status').className   = 'ef-status ef-ok';
       setTimeout(closeUploadPanel, 3000);
     } catch (err) {
