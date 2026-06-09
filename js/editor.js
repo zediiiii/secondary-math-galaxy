@@ -375,7 +375,13 @@ function buildUploadPanel() {
       <button class="ef-close" title="Close">✕</button>
     </div>
     <div class="ef-body">
-      <p class="ef-hint">Uploading sample for: <strong id="uf-node-label">—</strong></p>
+      <p class="ef-hint">Adding sample for: <strong id="uf-node-label">—</strong></p>
+
+      <label class="ef-label">Description <span class="ef-req">*</span></label>
+      <textarea id="uf-description" class="ef-input" rows="3"
+        placeholder="What does this student work show? (e.g. 'Student uses ratio table to extend pattern')"></textarea>
+
+      <label class="ef-label">Image <span class="ef-req">*</span></label>
       <div id="uf-dropzone" class="ef-dropzone" tabindex="0" role="button"
            aria-label="Upload image area">
         <div id="uf-drop-text">
@@ -386,7 +392,7 @@ function buildUploadPanel() {
       </div>
       <img id="uf-preview" alt="Preview" style="display:none" />
       <div id="uf-status" class="ef-status" aria-live="polite"></div>
-      <button id="uf-save-btn" class="ef-save-btn" style="display:none">📤 Upload</button>
+      <button id="uf-save-btn" class="ef-save-btn" style="display:none">📤 Upload &amp; Save Sample</button>
     </div>`;
   document.getElementById('cy-container').appendChild(panel);
 
@@ -412,13 +418,16 @@ function openUploadPanel(nodeId) {
   if (!editorActive) return;
   uploadNodeId = nodeId;
   pendingFile  = null;
-  document.getElementById('uf-node-label').textContent = nodeId;
-  document.getElementById('uf-preview').style.display  = 'none';
-  document.getElementById('uf-preview').src            = '';
-  document.getElementById('uf-save-btn').style.display = 'none';
-  document.getElementById('uf-status').textContent     = '';
-  document.getElementById('uf-status').className       = 'ef-status';
-  document.getElementById('uf-file-input').value       = '';
+  document.getElementById('uf-node-label').textContent    = nodeId;
+  document.getElementById('uf-description').value         = '';
+  document.getElementById('uf-preview').style.display     = 'none';
+  document.getElementById('uf-preview').src               = '';
+  document.getElementById('uf-save-btn').style.display    = 'none';
+  document.getElementById('uf-status').textContent        = '';
+  document.getElementById('uf-status').className          = 'ef-status';
+  document.getElementById('uf-file-input').value          = '';
+  document.getElementById('uf-drop-text').innerHTML       =
+    '<span style="font-size:2rem">📎</span><br>Drag &amp; drop an image here,<br>or click to browse';
   document.getElementById('upload-panel').classList.add('open');
 }
 
@@ -445,8 +454,16 @@ function handleFile(file) {
 async function saveImage() {
   if (!pendingFile || !uploadNodeId) return;
 
+  const description = document.getElementById('uf-description').value.trim();
+  if (!description) {
+    document.getElementById('uf-status').textContent = '⚠️ Please add a description first.';
+    document.getElementById('uf-status').className   = 'ef-status ef-warn';
+    document.getElementById('uf-description').focus();
+    return;
+  }
+
   document.getElementById('uf-save-btn').disabled = true;
-  document.getElementById('uf-status').textContent = 'Uploading…';
+  document.getElementById('uf-status').textContent = 'Uploading image…';
   document.getElementById('uf-status').className   = 'ef-status ef-info';
 
   const reader = new FileReader();
@@ -454,9 +471,16 @@ async function saveImage() {
     const dataUrl  = e.target.result;
     const base64   = dataUrl.split(',')[1];
     const ext      = (pendingFile.name.split('.').pop() || 'jpg').toLowerCase();
-    const filename = `${uploadNodeId.replace(/\./g, '-').toLowerCase()}.${ext}`;
+    const ts       = Date.now().toString(36).toUpperCase();
+    const filename = `${uploadNodeId.replace(/\./g, '-').toLowerCase()}-${ts}.${ext}`;
+
+    // Derive the MA's domain for the new sample row
+    const ma     = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === uploadNodeId);
+    const domain = ma ? ma.domain : '';
+    const sampleId = `${uploadNodeId}.S${ts}`;
 
     try {
+      // 1 — upload image to GitHub
       const upRes = await fetch(EDITOR_FN_IMAGE, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -464,9 +488,15 @@ async function saveImage() {
       });
       if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
 
-      await apiPost({ op: 'updateCell', nodeId: uploadNodeId, col: 'mediaLink', value: filename });
+      // 2 — append new Sample node row to the nodes sheet
+      // columns: id, tier, domain, parent, label, description, mediaLink
+      await apiPost({
+        op:  'append',
+        tab: 'nodes',
+        row: [sampleId, 4, domain, uploadNodeId, '', description, filename],
+      });
 
-      document.getElementById('uf-status').textContent = '✅ Uploaded! Reload to see the sample.';
+      document.getElementById('uf-status').textContent = '✅ Sample saved! Reload the page to see it.';
       document.getElementById('uf-status').className   = 'ef-status ef-ok';
       setTimeout(closeUploadPanel, 3000);
     } catch (err) {

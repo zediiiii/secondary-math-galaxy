@@ -126,6 +126,11 @@ function renderSelectionPanels() {
   stack.querySelectorAll('.related-task-tag').forEach(tag => {
     tag.addEventListener('click', () => selectTask(tag.dataset.taskId));
   });
+
+  // Wire description edit buttons
+  stack.querySelectorAll('.desc-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openDescEditor(btn.dataset.nodeId, btn));
+  });
 }
 
 function buildDetailCardHTML(data) {
@@ -193,9 +198,17 @@ function buildDetailCardHTML(data) {
     mediaHtml = `<div class="detail-section"><img class="sample-img" src="public/samples/${data.mediaLink}" alt="Student work sample" /></div>`;
   }
 
-  // Upload sample button — visible only in edit mode
+  // Upload sample button — visible only in edit mode on MA nodes
   const uploadBtn = (tier === 3 && typeof editorActive !== 'undefined' && editorActive)
-    ? `<div class="detail-section"><button class="upload-sample-btn" onclick="openUploadPanel('${data.id}')">📷 Upload Sample Image</button></div>`
+    ? `<div class="detail-section"><button class="upload-sample-btn" onclick="openUploadPanel('${data.id}')">📷 Add Sample Image</button></div>`
+    : '';
+
+  const descRendered = (typeof marked !== 'undefined' && data.description)
+    ? marked.parse(data.description)
+    : (data.description || '').replace(/\n/g, '<br>');
+
+  const editDescBtn = (typeof editorActive !== 'undefined' && editorActive)
+    ? `<button class="desc-edit-btn" data-node-id="${data.id}" title="Edit description">✏️ edit</button>`
     : '';
 
   return `
@@ -207,7 +220,8 @@ function buildDetailCardHTML(data) {
     </div>
     <div class="detail-id">${data.id}</div>
     <div class="detail-label">${(data.label || '').replace(/\n/g, ' ')}</div>
-    <div class="detail-desc">${data.description || ''}</div>
+    <div class="detail-desc" data-node-id="${data.id}">${descRendered}</div>
+    ${editDescBtn}
     ${mediaHtml}
     ${uploadBtn}
     ${relatedTasksHtml}

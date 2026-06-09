@@ -218,16 +218,19 @@ html, body {
   position: absolute;
   right: 12px;
   top: 12px;
-  width: 310px;
+  width: var(--card-w, 310px);
   max-height: calc(100vh - 90px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 20;
-  /* No pointer events on the container itself — cards handle it */
   pointer-events: none;
+  font-size: var(--card-fs, 13px);
 }
+body.card-md  { --card-w: 400px;  --card-fs: 14px; }
+body.card-lg  { --card-w: 520px;  --card-fs: 15px; }
+body.card-xl  { --card-w: 660px;  --card-fs: 16px; }
 
 .detail-card {
   background: var(--surface);
@@ -739,6 +742,73 @@ body.edit-mode #top-bar {
 
 /* ── Hint text ── */
 .ef-hint { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+
+/* ---- Card size toggle ---------------------------------------- */
+#card-size-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; font-weight: 700; padding: 5px 9px;
+  transition: background 0.15s, color 0.15s; white-space: nowrap;
+  margin-left: 4px;
+}
+#card-size-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- Markdown rendering in detail cards ---------------------- */
+.detail-desc h1,.detail-desc h2,.detail-desc h3 {
+  font-size: 1em; font-weight: 700; margin: 6px 0 2px;
+}
+.detail-desc p  { margin: 0 0 6px; }
+.detail-desc ul,.detail-desc ol { margin: 0 0 6px; padding-left: 18px; }
+.detail-desc li { margin-bottom: 2px; }
+.detail-desc strong { color: var(--text); }
+.detail-desc em     { color: var(--text-dim); }
+.detail-desc a      { color: var(--accent); text-decoration: underline; }
+.detail-desc code   { background: var(--surface2); padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+
+/* ---- Description inline editor ------------------------------- */
+.desc-edit-btn {
+  background: none; border: 1px solid transparent;
+  color: var(--text-dim); cursor: pointer; font-size: 11px;
+  padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+  vertical-align: middle;
+}
+.desc-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.desc-editor-wrap { margin-top: 6px; }
+
+.md-toolbar {
+  display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap;
+}
+.md-tool {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text-dim); cursor: pointer; border-radius: 4px;
+  font-size: 11px; font-weight: 700; padding: 3px 7px;
+  transition: background 0.12s;
+}
+.md-tool:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.desc-textarea {
+  width: 100%; padding: 8px 10px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 12px;
+  resize: vertical; font-family: inherit; min-height: 80px;
+}
+.desc-textarea:focus { outline: none; border-color: var(--accent); }
+
+.desc-editor-actions { display: flex; gap: 6px; margin-top: 6px; }
+.desc-save-btn {
+  flex: 1; padding: 7px; border-radius: 6px;
+  background: var(--accent); color: #fff; border: none;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.desc-save-btn:hover    { background: #9b8fff; }
+.desc-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.desc-cancel-btn {
+  padding: 7px 12px; border-radius: 6px;
+  background: var(--surface2); color: var(--text-dim);
+  border: 1px solid var(--border); font-size: 12px; cursor: pointer;
+}
+.desc-cancel-btn:hover { color: var(--text); }
 
 /* ---- Responsive ---------------------------------------------- */
 
