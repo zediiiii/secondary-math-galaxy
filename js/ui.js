@@ -205,15 +205,19 @@ function buildDetailCardHTML(data) {
   // Sample image — served from GitHub raw URL so new uploads appear without a Netlify redeploy
   const SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
   let mediaHtml = '';
-  if (tier === 4 && data.mediaLink) {
+  if (tier === 4) {
     const inEditMode = (typeof editorActive !== 'undefined' && editorActive);
     const sampleDelBtn = inEditMode
       ? `<button class="sample-delete-btn" onclick="deleteSample('${data.id}')" title="Remove this sample">🗑️ Remove sample</button>`
       : '';
-    mediaHtml = `<div class="detail-section">
-      <img class="sample-img" src="${SAMPLES_BASE}${data.mediaLink}" alt="Student work sample" />
-      ${sampleDelBtn}
-    </div>`;
+    if (data.mediaLink) {
+      mediaHtml = `<div class="detail-section">
+        <img class="sample-img" src="${SAMPLES_BASE}${data.mediaLink}" alt="Student work sample" />
+        ${sampleDelBtn}
+      </div>`;
+    } else if (inEditMode) {
+      mediaHtml = `<div class="detail-section">${sampleDelBtn}</div>`;
+    }
   }
 
   // Upload sample button — visible only in edit mode on MA nodes

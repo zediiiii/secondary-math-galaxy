@@ -142,23 +142,9 @@ function initExportBtn() {
   document.getElementById('top-bar').appendChild(btn);
 }
 
-// Show/hide export button with edit mode
-const _origActivate   = typeof activateEditMode   !== 'undefined' ? activateEditMode   : null;
-const _origDeactivate = typeof deactivateEditMode !== 'undefined' ? deactivateEditMode : null;
-
-function patchEditModeButtons() {
-  // Patch happens after editor.js defines activate/deactivate
-  const exportBtn = document.getElementById('export-data-btn');
-  const origBtn   = document.getElementById('edit-mode-btn');
-  if (!exportBtn || !origBtn) return;
-
-  origBtn.addEventListener('click', () => {
-    // Delay to read class after editor.js toggles it
-    setTimeout(() => {
-      exportBtn.style.display = document.body.classList.contains('edit-mode') ? '' : 'none';
-    }, 50);
-  });
-}
+// Export button show/hide is now handled directly in
+// activateEditMode() / deactivateEditMode() in editor.js.
+function patchEditModeButtons() { /* no-op — kept for safety */ }
 
 function initApp() {
   buildAboutTab();

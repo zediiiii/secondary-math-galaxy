@@ -68,6 +68,9 @@ function activateEditMode() {
   document.getElementById('edit-mode-btn').title = 'Exit Edit Mode';
   document.body.classList.add('edit-mode');
   document.getElementById('add-task-btn').style.display = '';
+  const exportBtn = document.getElementById('export-data-btn');
+  if (exportBtn) exportBtn.style.display = '';
+  if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
 }
 
 function deactivateEditMode() {
@@ -76,6 +79,9 @@ function deactivateEditMode() {
   document.getElementById('edit-mode-btn').title = 'Enable Edit Mode';
   document.body.classList.remove('edit-mode');
   document.getElementById('add-task-btn').style.display = 'none';
+  const exportBtn = document.getElementById('export-data-btn');
+  if (exportBtn) exportBtn.style.display = 'none';
+  if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
   closeTaskForm();
   closeUploadPanel();
 }
