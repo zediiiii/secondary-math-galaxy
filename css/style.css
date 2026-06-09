@@ -820,6 +820,34 @@ body.edit-mode #top-bar {
 }
 .desc-cancel-btn:hover { color: var(--text); }
 
+/* ---- Loading overlay ----------------------------------------- */
+#loading-overlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.4s ease;
+}
+#loading-overlay.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+.loading-spinner {
+  width: 44px; height: 44px;
+  border: 3px solid rgba(255,255,255,0.08);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-overlay p {
+  margin-top: 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
 /* ---- Responsive ---------------------------------------------- */
 
 @media (max-width: 768px) {

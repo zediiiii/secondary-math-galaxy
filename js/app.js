@@ -180,5 +180,13 @@ function initApp() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  Promise.resolve(window.dataReady).then(initApp);
+  Promise.resolve(window.dataReady).then(() => {
+    initApp();
+    // Dismiss the loading overlay now that data and graph are ready
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+      overlay.classList.add('fade-out');
+      setTimeout(() => overlay.remove(), 450);
+    }
+  });
 });

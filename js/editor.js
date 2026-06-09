@@ -265,25 +265,47 @@ function handleEditorNodeTap(node) {
   return true;
 }
 
+function _maOptionLabel(id) {
+  const ma = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === id);
+  const lbl = ma ? (ma.label || '').replace(/\n/g, ' ').slice(0, 35) : '';
+  return lbl ? `${id} — ${lbl}` : id;
+}
+
 function renderMAChips() {
   const container = document.getElementById('tf-ma-chips');
   if (!container) return;
+
   if (!taskFormMAs.length) {
     container.innerHTML = '<span class="ef-chip-empty">No MAs selected yet — click squares on the galaxy</span>';
-    return;
+  } else {
+    container.innerHTML = taskFormMAs.map(id => {
+      const ma  = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === id);
+      const tip = ma ? (ma.label || '').replace(/\n/g, ' ') : '';
+      return `<span class="ef-chip" title="${tip}">
+        ${id}
+        <button class="ef-chip-rm" data-id="${id}" title="Remove">×</button>
+      </span>`;
+    }).join('');
+    container.querySelectorAll('.ef-chip-rm').forEach(btn =>
+      btn.addEventListener('click', () => {
+        taskFormMAs = taskFormMAs.filter(m => m !== btn.dataset.id);
+        cy.getElementById(btn.dataset.id).removeClass('editor-selected');
+        renderMAChips();
+      })
+    );
   }
-  container.innerHTML = taskFormMAs.map(id => `
-    <span class="ef-chip">
-      ${id}
-      <button class="ef-chip-rm" data-id="${id}" title="Remove">×</button>
-    </span>`).join('');
-  container.querySelectorAll('.ef-chip-rm').forEach(btn =>
-    btn.addEventListener('click', () => {
-      taskFormMAs = taskFormMAs.filter(m => m !== btn.dataset.id);
-      cy.getElementById(btn.dataset.id).removeClass('editor-selected');
-      renderMAChips();
-    })
-  );
+
+  // Keep every already-added context-row MA dropdown in sync with current MA list
+  document.querySelectorAll('.ef-ctx-ma').forEach(sel => {
+    const cur = sel.value;
+    if (!taskFormMAs.length) {
+      sel.innerHTML = '<option value="">— select MAs first —</option>';
+    } else {
+      sel.innerHTML = taskFormMAs.map(id =>
+        `<option value="${id}"${id === cur ? ' selected' : ''}>${_maOptionLabel(id)}</option>`
+      ).join('');
+    }
+  });
 }
 
 function addContextRow(stage) {
@@ -293,7 +315,7 @@ function addContextRow(stage) {
   div.className = 'ef-ctx-row';
 
   const maOptions = taskFormMAs.length
-    ? taskFormMAs.map(id => `<option value="${id}">${id}</option>`).join('')
+    ? taskFormMAs.map(id => `<option value="${id}">${_maOptionLabel(id)}</option>`).join('')
     : '<option value="">— select MAs first —</option>';
 
   div.innerHTML = `
@@ -425,7 +447,9 @@ function openUploadPanel(nodeId) {
   if (!editorActive) return;
   uploadNodeId = nodeId;
   pendingFile  = null;
-  document.getElementById('uf-node-label').textContent    = nodeId;
+  const _ma = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === nodeId);
+  const _maLabel = _ma ? (_ma.label || '').replace(/\n/g, ' ') || nodeId : nodeId;
+  document.getElementById('uf-node-label').textContent    = _maLabel;
   document.getElementById('uf-description').value         = '';
   document.getElementById('uf-preview').style.display     = 'none';
   document.getElementById('uf-preview').src               = '';
@@ -481,9 +505,8 @@ async function saveImage() {
     const ts       = Date.now().toString(36).toUpperCase();
     const filename = `${uploadNodeId.replace(/\./g, '-').toLowerCase()}-${ts}.${ext}`;
 
-    // Derive the MA's domain for the new sample row
-    const ma     = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === uploadNodeId);
-    const domain = ma ? ma.domain : '';
+    const ma       = (typeof MENTAL_ACTIONS !== 'undefined' ? MENTAL_ACTIONS : []).find(m => m.id === uploadNodeId);
+    const domain   = ma ? ma.domain : '';
     const sampleId = `${uploadNodeId}.S${ts}`;
 
     try {
@@ -495,40 +518,50 @@ async function saveImage() {
       });
       if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
 
-      // 2 — append new Sample node row to the nodes sheet
-      // columns: id, tier, domain, parent, label, description, mediaLink
-      await apiPost({
-        op:  'append',
-        tab: 'nodes',
-        row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
-      });
-
-      // 3 — add to in-memory data + graph immediately; save cache
+      // 2 — add to in-memory data + graph immediately (optimistic, before Sheet write)
       const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: 'Sample', description, mediaLink: filename };
       if (typeof SAMPLES !== 'undefined') SAMPLES.push(newSample);
+
       if (typeof cy !== 'undefined' && typeof LAYOUT !== 'undefined' && typeof DOMAIN_COLORS !== 'undefined') {
-        const maPos  = LAYOUT.positions[uploadNodeId] || { x: 0, y: 0 };
-        const angle  = Math.atan2(maPos.y, maPos.x);
-        const r      = 820;
-        const pos    = { x: r * Math.cos(angle), y: r * Math.sin(angle) };
+        const maPos = LAYOUT.positions[uploadNodeId] || { x: 0, y: 0 };
+        const angle = Math.atan2(maPos.y, maPos.x);
+        const pos   = { x: 820 * Math.cos(angle), y: 820 * Math.sin(angle) };
         cy.add({
           group: 'nodes',
           data: { id: sampleId, label: '', tier: 4, domain, parent_node: uploadNodeId, description, mediaLink: filename },
           position: pos,
-          style: { 'background-color': DOMAIN_COLORS[domain] || '#4fc3f7' },
+          // Start at full opacity so the editor can see it landed
+          style: { 'background-color': DOMAIN_COLORS[domain] || '#4fc3f7', opacity: 1 },
         });
         cy.add({ group: 'edges', data: { id: `e_${sampleId}`, source: uploadNodeId, target: sampleId, type: 'hierarchy' } });
       }
 
       if (typeof galaxyCache !== 'undefined') galaxyCache.save();
-      document.getElementById('uf-status').textContent = '✅ Sample saved! Syncing to Sheet…';
-      document.getElementById('uf-status').className   = 'ef-status ef-ok';
-      setTimeout(closeUploadPanel, 2500);
+
+      // 3 — close the panel and immediately show the new sample's detail card
+      closeUploadPanel();
+      if (typeof clearSelection   === 'function') clearSelection();
+      if (typeof addNodeSelection === 'function') addNodeSelection(sampleId);
+      const newCyNode = cy.getElementById(sampleId);
+      if (newCyNode && newCyNode.length && typeof zoomToNodeCluster === 'function') {
+        zoomToNodeCluster(newCyNode);
+      }
+      // Brief delay so zoom animation starts before card renders
+      setTimeout(() => {
+        if (typeof renderSelectionPanels === 'function') renderSelectionPanels();
+      }, 420);
+
+      // 4 — Sheet write in background; log but don't block the editor
+      apiPost({
+        op:  'append',
+        tab: 'nodes',
+        row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
+      }).catch(err => console.warn('[editor] Sample Sheet sync failed:', err.message));
+
     } catch (err) {
       document.getElementById('uf-status').textContent = '❌ ' + err.message;
       document.getElementById('uf-status').className   = 'ef-status ef-error';
-    } finally {
-      document.getElementById('uf-save-btn').disabled = false;
+      document.getElementById('uf-save-btn').disabled  = false;
     }
   };
   reader.readAsDataURL(pendingFile);

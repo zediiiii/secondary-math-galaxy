@@ -235,7 +235,7 @@ function buildDetailCardHTML(data) {
 
 function openPDFModal(url, title) {
   if (!url) {
-    alert('No PDF linked yet for this task. Paste the Google Drive share link into the Tasks data in js/data.js.');
+    alert('No PDF linked for this task yet.\n\nTo add one: open the Tasks sheet, find this task, and paste the Google Drive share link (/preview URL) into the pdfLink column. It will appear after the next data sync.');
     return;
   }
   document.getElementById('pdf-modal-title').textContent = title;
