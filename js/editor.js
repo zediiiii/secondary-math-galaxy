@@ -219,9 +219,13 @@ function buildTaskFormPanel() {
 
 function openTaskForm() {
   if (!editorActive) return;
-  taskFormOpen = true;
-  taskFormMAs  = [];
+  taskFormOpen  = true;
+  taskFormMAs   = [];
   ctxRowCounter = 0;
+  // Visual cue: highlight all MA squares so the editor knows to click them
+  if (typeof cy !== 'undefined') cy.nodes('[tier=3]').addClass('ma-picker-mode');
+  const banner = document.getElementById('ma-picker-banner');
+  if (banner) banner.style.display = '';
   document.getElementById('tf-label').value    = '';
   document.getElementById('tf-category').value = '';
   document.getElementById('tf-pdf').value      = '';
@@ -247,6 +251,10 @@ function openTaskForm() {
 function closeTaskForm() {
   taskFormOpen = false;
   document.getElementById('task-form-panel').classList.remove('open');
+  // Remove MA-picker visual state
+  if (typeof cy !== 'undefined') cy.nodes('[tier=3]').removeClass('ma-picker-mode').removeClass('editor-selected');
+  const banner = document.getElementById('ma-picker-banner');
+  if (banner) banner.style.display = 'none';
 }
 
 // Called from graph.js tap handler — returns true if the tap was consumed
@@ -346,9 +354,9 @@ async function saveTask() {
   if (!category)           return taskStatus('⚠️ Category is required.', 'warn');
   if (!taskFormMAs.length) return taskStatus('⚠️ Select at least one mental action.', 'warn');
 
-  // Generate a unique ID from the label
-  const slug = label.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24);
-  const id   = `Task_${slug}`;
+  // Generate a unique ID — slug + short timestamp suffix avoids collisions
+  const slug = label.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20);
+  const id   = `Task_${slug}_${Date.now().toString(36).toUpperCase().slice(-4)}`;
 
   taskStatus('Saving…', 'info');
   document.getElementById('tf-save-btn').disabled = true;
@@ -565,6 +573,65 @@ async function saveImage() {
     }
   };
   reader.readAsDataURL(pendingFile);
+}
+
+// ── Delete task ───────────────────────────────────────────────
+
+async function deleteTask(taskId) {
+  const task = (typeof TASKS !== 'undefined' ? TASKS : []).find(t => t.id === taskId);
+  if (!task) return;
+  if (!confirm(`Delete "${task.label}"?\n\nThis removes it from the app immediately. The row will also be cleared from the Tasks sheet.`)) return;
+
+  // Remove from memory
+  const idx = TASKS.findIndex(t => t.id === taskId);
+  if (idx !== -1) TASKS.splice(idx, 1);
+
+  // If this task was active, clear its highlighting
+  if (typeof activeTaskId !== 'undefined' && activeTaskId === taskId) {
+    if (typeof resetHighlighting === 'function') resetHighlighting();
+  }
+
+  // Rebuild sidebar, save cache
+  if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
+  if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+
+  // Background Sheet row clear
+  apiPost({ op: 'deleteRow', tab: 'tasks', id: taskId })
+    .catch(err => console.warn('[editor] deleteTask Sheet sync failed:', err.message));
+}
+
+// ── Delete sample ─────────────────────────────────────────────
+
+async function deleteSample(sampleId) {
+  const sample = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).find(s => s.id === sampleId);
+  if (!sample) return;
+  const preview = sample.description ? `"${sample.description.slice(0, 60)}"` : sampleId;
+  if (!confirm(`Remove this sample image?\n${preview}\n\nThe node will be removed from the app and the row cleared from the sheet.`)) return;
+
+  // Remove from memory
+  const idx = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).findIndex(s => s.id === sampleId);
+  if (idx !== -1) SAMPLES.splice(idx, 1);
+
+  // Remove from graph (node + any connected edges)
+  if (typeof cy !== 'undefined') {
+    cy.edges(`[source="${sampleId}"], [target="${sampleId}"]`).remove();
+    cy.getElementById(sampleId).remove();
+  }
+
+  // Deselect if currently shown in detail panel
+  if (typeof selectedNodeIds !== 'undefined') {
+    const selIdx = selectedNodeIds.indexOf(sampleId);
+    if (selIdx !== -1) {
+      selectedNodeIds.splice(selIdx, 1);
+      if (typeof renderSelectionPanels === 'function') renderSelectionPanels();
+    }
+  }
+
+  if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+
+  // Background Sheet row clear
+  apiPost({ op: 'deleteRow', tab: 'nodes', id: sampleId })
+    .catch(err => console.warn('[editor] deleteSample Sheet sync failed:', err.message));
 }
 
 // ── Shared API helper ─────────────────────────────────────────

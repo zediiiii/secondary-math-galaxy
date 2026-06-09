@@ -75,11 +75,15 @@ window.dataReady = (async () => {
   // ── Apply data ─────────────────────────────────────────────
   applyRawData(rawData);
 
-  // ── Persist to localStorage ────────────────────────────────
-  try {
-    localStorage.setItem(CACHE_KEY,    JSON.stringify(rawData));
-    localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
-  } catch (e) { /* quota exceeded — not critical */ }
+  // ── Persist to localStorage (deferred so it doesn't block the render) ─
+  const _serialised = JSON.stringify(rawData);
+  const _ts         = String(Date.now());
+  (window.requestIdleCallback || (cb => setTimeout(cb, 0)))(() => {
+    try {
+      localStorage.setItem(CACHE_KEY,    _serialised);
+      localStorage.setItem(CACHE_TS_KEY, _ts);
+    } catch (e) { /* quota exceeded — not critical */ }
+  });
 
 })();
 
@@ -217,27 +221,27 @@ window.galaxyCache = {
     } catch (e) { /* quota */ }
   },
 
-  // Download all current data as CSV files (one per tab)
-  exportCSVs() {
-    const tabs = [
-      { name: 'nodes',           rows: buildRawNodes() },
-      { name: 'progressions',    rows: buildRawProgressions() },
-      { name: 'crossdomain',     rows: buildRawCrossDomain() },
-      { name: 'tasks',           rows: buildRawTasks() },
-      { name: 'teacher_context', rows: buildRawTeacherContext() },
-    ];
-    tabs.forEach(({ name, rows }) => {
-      const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a    = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(blob),
-        download: `galaxy-${name}-${new Date().toISOString().slice(0,10)}.csv`,
-      });
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
+  // Download all current in-memory data as a single JSON file.
+  // Same shape as sheets-read returns, so it can be re-imported or
+  // pasted manually into the sheet tabs.
+  exportData() {
+    const payload = {
+      exported: new Date().toISOString(),
+      nodes:           buildRawNodes(),
+      progressions:    buildRawProgressions(),
+      crossdomain:     buildRawCrossDomain(),
+      tasks:           buildRawTasks(),
+      teacher_context: buildRawTeacherContext(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a    = Object.assign(document.createElement('a'), {
+      href:     URL.createObjectURL(blob),
+      download: `galaxy-export-${new Date().toISOString().slice(0,10)}.json`,
     });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
   },
 };
 

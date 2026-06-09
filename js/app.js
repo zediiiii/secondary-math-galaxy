@@ -68,17 +68,22 @@ function openDescEditor(nodeId, triggerBtn) {
       e.preventDefault(); // keep focus on textarea
       const s = ta.selectionStart, end = ta.selectionEnd;
       const sel = ta.value.slice(s, end);
-      let insert = '';
+
       if (btn.dataset.wrap) {
-        const m = btn.dataset.wrap;
-        insert = sel ? `${m}${sel}${m}` : `${m}text${m}`;
+        const m      = btn.dataset.wrap;
+        const insert = sel ? `${m}${sel}${m}` : `${m}text${m}`;
+        ta.setRangeText(insert, s, end, 'end');
       } else if (btn.dataset.prefix) {
-        insert = btn.dataset.prefix + (sel || 'item');
+        ta.setRangeText(btn.dataset.prefix + (sel || 'item'), s, end, 'end');
       } else if (btn.dataset.link) {
-        const url = prompt('Paste URL:') || 'https://';
-        insert = `[${sel || 'link text'}](${url})`;
+        // Insert markdown link template and pre-select the URL placeholder
+        // so the editor can immediately type or paste their URL — no prompt() needed
+        const linkText = sel || 'link text';
+        const template = `[${linkText}](url)`;
+        ta.setRangeText(template, s, end, 'end');
+        const urlStart = s + 1 + linkText.length + 2; // skip past [text](
+        ta.setSelectionRange(urlStart, urlStart + 3);  // select 'url'
       }
-      ta.setRangeText(insert, s, end, 'end');
       ta.focus();
     });
   });
@@ -128,11 +133,11 @@ function openDescEditor(nodeId, triggerBtn) {
 function initExportBtn() {
   const btn = document.createElement('button');
   btn.id        = 'export-data-btn';
-  btn.title     = 'Download all current data as CSV files';
+  btn.title     = 'Download all current data as a JSON file';
   btn.textContent = '📥 Export';
   btn.style.display = 'none';
   btn.addEventListener('click', () => {
-    if (typeof galaxyCache !== 'undefined') galaxyCache.exportCSVs();
+    if (typeof galaxyCache !== 'undefined') galaxyCache.exportData();
   });
   document.getElementById('top-bar').appendChild(btn);
 }

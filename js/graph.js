@@ -137,6 +137,8 @@ const STYLESHEET = [
   { selector: '.ctx-after',  style: { 'border-color': '#ffa726', 'border-width': 4 } },
   // Multi-select ring
   { selector: '.selected-node', style: { 'border-color': '#ffffff', 'border-width': 4, 'z-index': 15 } },
+  // MA-picker mode (task form open) — gentle glow so editors know to click squares
+  { selector: '.ma-picker-mode', style: { 'border-color': '#7c6fffcc', 'border-width': 2.5, 'opacity': 0.9 } },
 ];
 
 // ---- Build elements --------------------------------------------
@@ -331,29 +333,32 @@ function applyTaskHighlighting(task) {
   const brightIds = new Set([...activeDomains, ...activeBIs, ...targetMAIds]);
   SAMPLES.forEach(s => { if (targetMAIds.has(s.parent)) brightIds.add(s.id); });
 
-  cy.nodes().forEach(n => {
-    if (brightIds.has(n.id())) {
-      n.addClass('active-bright');
-      if (n.data('tier') === 4) n.addClass('sample-active');
-    } else {
-      n.addClass('inactive');
-    }
-  });
+  // Batch all style mutations into a single Cytoscape pass (prevents per-element redraws)
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      if (brightIds.has(n.id())) {
+        n.addClass('active-bright');
+        if (n.data('tier') === 4) n.addClass('sample-active');
+      } else {
+        n.addClass('inactive');
+      }
+    });
 
-  // Cross-domain related nodes — dim (not invisible)
-  CROSS_DOMAIN.forEach(xd => {
-    if (brightIds.has(xd.from) || brightIds.has(xd.to)) {
-      const other = brightIds.has(xd.from) ? xd.to : xd.from;
-      const otherNode = cy.getElementById(other);
-      if (otherNode.hasClass('inactive')) otherNode.removeClass('inactive').addClass('active-dim');
-    }
-  });
+    // Cross-domain related nodes — dim (not invisible)
+    CROSS_DOMAIN.forEach(xd => {
+      if (brightIds.has(xd.from) || brightIds.has(xd.to)) {
+        const other = brightIds.has(xd.from) ? xd.to : xd.from;
+        const otherNode = cy.getElementById(other);
+        if (otherNode.hasClass('inactive')) otherNode.removeClass('inactive').addClass('active-dim');
+      }
+    });
 
-  cy.edges().forEach(e => {
-    const s = e.data('source'), t = e.data('target');
-    if (brightIds.has(s) && brightIds.has(t))      e.addClass('edge-bright');
-    else if (brightIds.has(s) || brightIds.has(t)) e.addClass('edge-dim');
-    else                                            e.addClass('inactive');
+    cy.edges().forEach(e => {
+      const s = e.data('source'), t = e.data('target');
+      if (brightIds.has(s) && brightIds.has(t))      e.addClass('edge-bright');
+      else if (brightIds.has(s) || brightIds.has(t)) e.addClass('edge-dim');
+      else                                            e.addClass('inactive');
+    });
   });
 
   applyContextOverlays(task);

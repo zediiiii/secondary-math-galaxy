@@ -123,11 +123,28 @@ exports.handler = async (event) => {
       if (rowIndex === -1) return { statusCode: 404, headers: cors, body: 'Node not found' };
 
       const col   = String.fromCharCode(65 + colIdx);
-      const range = `'nodes'!${col}${rowIndex + 1}`;
+      const range = `nodes!${col}${rowIndex + 1}`;
       await sheetsAPI(token, 'PUT',
         `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         { values: [[body.value]] }
       );
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };
+    }
+
+    // ── deleteRow: clear a row by ID so the loader's empty-row filter skips it ──
+    if (body.op === 'deleteRow') {
+      const tabName = body.tab;
+      if (!TAB_COLS[tabName]) return { statusCode: 400, headers: cors, body: `Unknown tab: ${tabName}` };
+
+      // Find the row by searching column A for the ID
+      const colA   = await sheetsAPI(token, 'GET', `/values/${encodeURIComponent(tabName + '!A:A')}`);
+      const rows   = colA.values || [];
+      const rowIdx = rows.findIndex(r => r[0] === body.id);
+      if (rowIdx <= 0) return { statusCode: 404, headers: cors, body: 'Row not found or is header' };
+
+      // Clear all cells in that row — empty rows are filtered out by the loader
+      const clearRange = `${tabName}!${rowIdx + 1}:${rowIdx + 1}`;
+      await sheetsAPI(token, 'POST', `/values/${encodeURIComponent(clearRange)}:clear`, {});
       return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };
     }
 

@@ -820,6 +820,48 @@ body.edit-mode #top-bar {
 }
 .desc-cancel-btn:hover { color: var(--text); }
 
+/* ---- Task delete button (edit mode) -------------------------- */
+.task-delete-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 13px; padding: 2px 5px;
+  border-radius: 4px; opacity: 0; transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.task-item:hover .task-delete-btn,
+.task-item.selected .task-delete-btn { opacity: 1; }
+.task-delete-btn:hover { color: #ff6b6b; }
+
+/* ---- Sample delete button (edit mode, inside detail card) ---- */
+.sample-delete-btn {
+  display: block; width: 100%; margin-top: 6px;
+  padding: 6px; border-radius: 6px;
+  background: transparent; border: 1px solid #ff6b6b44;
+  color: #ff6b6b; cursor: pointer; font-size: 12px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sample-delete-btn:hover { background: #ff6b6b18; border-color: #ff6b6b; }
+
+/* ---- MA-picker banner (task form open) ----------------------- */
+#ma-picker-banner {
+  position: absolute;
+  top: 12px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(124, 111, 255, 0.12);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  color: var(--accent);
+  font-size: 12px; font-weight: 600;
+  padding: 6px 18px;
+  pointer-events: none;
+  z-index: 30;
+  white-space: nowrap;
+  animation: banner-pulse 2s ease-in-out infinite;
+}
+@keyframes banner-pulse {
+  0%, 100% { opacity: 0.75; }
+  50%       { opacity: 1; }
+}
+
 /* ---- Loading overlay ----------------------------------------- */
 #loading-overlay {
   position: fixed; inset: 0;
