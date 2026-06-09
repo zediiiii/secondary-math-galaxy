@@ -16,7 +16,8 @@ window.dataReady = (async () => {
 
   let csvTexts;
   try {
-    csvTexts = await Promise.all(urls.map(u => u ? fetch(u).then(r => {
+    const bust = `&_t=${Date.now()}`;
+    csvTexts = await Promise.all(urls.map(u => u ? fetch(u + bust, { cache: 'no-store' }).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${u}`);
       return r.text();
     }) : Promise.resolve(null)));
