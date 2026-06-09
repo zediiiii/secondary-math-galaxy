@@ -6,14 +6,14 @@
 
 const crypto = require('crypto');
 
-const SPREADSHEET_ID = '1e3itPWSF2mNft7cQ6N7JpZt_eYs4QAMe6udEIs5pkLw';
+const SPREADSHEET_ID = '1mD7b0rPf6gdAtnNwk7g_3rVKT_-0qSdZJM-NbbhCao';
 
 const TAB_COLS = {
-  nodes:           "'nodes'!A:G",
-  progressions:    "'progressions'!A:D",
-  crossdomain:     "'crossdomain'!A:E",
-  tasks:           "'tasks'!A:F",
-  teacher_context: "'teacher_context'!A:E",
+  nodes:           'nodes!A:G',
+  progressions:    'progressions!A:D',
+  crossdomain:     'crossdomain!A:E',
+  tasks:           'tasks!A:F',
+  teacher_context: 'teacher_context!A:E',
 };
 
 // ── Google Service Account JWT auth ──────────────────────────
@@ -104,7 +104,7 @@ exports.handler = async (event) => {
       if (!range) return { statusCode: 400, headers: cors, body: `Unknown tab: ${body.tab}` };
 
       await sheetsAPI(token, 'POST',
-        `/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+        `/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         { values: [body.row] }
       );
       return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };
@@ -117,7 +117,7 @@ exports.handler = async (event) => {
       if (colIdx === undefined) return { statusCode: 400, headers: cors, body: `Unknown col: ${body.col}` };
 
       // Read column A to find the row number
-      const data     = await sheetsAPI(token, 'GET', `/values/'nodes'!A:A`);
+      const data     = await sheetsAPI(token, 'GET', `/values/${encodeURIComponent('nodes!A:A')}`);
       const rows     = data.values || [];
       const rowIndex = rows.findIndex(r => r[0] === body.nodeId);
       if (rowIndex === -1) return { statusCode: 404, headers: cors, body: 'Node not found' };
@@ -125,7 +125,7 @@ exports.handler = async (event) => {
       const col   = String.fromCharCode(65 + colIdx);
       const range = `'nodes'!${col}${rowIndex + 1}`;
       await sheetsAPI(token, 'PUT',
-        `/values/${range}?valueInputOption=USER_ENTERED`,
+        `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         { values: [[body.value]] }
       );
       return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };

@@ -505,5 +505,9 @@ const ABOUT_CONTENT = {
       heading: 'The 5-Tier Taxonomy',
       body: `🟠 Domains (Solar Systems) — Major content areas spanning grades 6–12\n🔵 Big Ideas (Suns) — Organizing concepts around which everything else orbits\n🟩 Mental Actions (Planets) — Specific ways of thinking, ordered by sophistication\n💠 Samples (Moons) — Student work illustrating a Mental Action; appear when a Task is selected\n📋 Teacher Context (Overlays) — Planning or Reflecting guidance; toggled by the Teaching Stage bar`
     },
+    {
+      heading: 'Credits',
+      body: `Design & Development: Jayce Bell and Josh Watson\n\nThe conceptual hierarchy draws on the NCTM "Developing Essential Understanding" series as a primary source for identifying Big Ideas and Mental Actions across secondary mathematics domains.`
+    },
   ]
 };
