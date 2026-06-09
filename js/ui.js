@@ -211,8 +211,11 @@ function buildDetailCardHTML(data) {
       ? `<button class="sample-delete-btn" onclick="deleteSample('${data.id}')" title="Remove this sample">🗑️ Remove sample</button>`
       : '';
     if (data.mediaLink) {
+      // data: URLs (local dev) used as-is; filenames get the GitHub raw base prepended
+      const imgSrc = data.mediaLink.startsWith('data:') ? data.mediaLink : `${SAMPLES_BASE}${data.mediaLink}`;
       mediaHtml = `<div class="detail-section">
-        <img class="sample-img" src="${SAMPLES_BASE}${data.mediaLink}" alt="Student work sample" />
+        <img class="sample-img" src="${imgSrc}" alt="Student work sample"
+             style="cursor:zoom-in" onclick="openSampleLightbox('${data.id}')" />
         ${sampleDelBtn}
       </div>`;
     } else if (inEditMode) {

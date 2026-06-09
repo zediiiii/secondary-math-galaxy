@@ -508,7 +508,7 @@ async function saveImage() {
   }
 
   document.getElementById('uf-save-btn').disabled = true;
-  document.getElementById('uf-status').textContent = 'Uploading image…';
+  document.getElementById('uf-status').textContent = 'Saving…';
   document.getElementById('uf-status').className   = 'ef-status ef-info';
 
   const reader = new FileReader();
@@ -523,17 +523,30 @@ async function saveImage() {
     const domain   = ma ? ma.domain : '';
     const sampleId = `${uploadNodeId}.S${ts}`;
 
-    try {
-      // 1 — upload image to GitHub
-      const upRes = await fetch(EDITOR_FN_IMAGE, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ password: editorPassword, filename, base64 }),
-      });
-      if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
+    // ── Detect local dev: skip GitHub upload, store data URL directly ─────
+    const isLocal = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
 
-      // 2 — add to in-memory data + graph immediately (optimistic, before Sheet write)
-      const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: 'Sample', description, mediaLink: filename };
+    try {
+      let resolvedMediaLink;
+
+      if (isLocal) {
+        // Store the raw data URL — works offline, no Netlify needed.
+        // On production deploy the editor will upload to GitHub as normal.
+        resolvedMediaLink = dataUrl;
+        document.getElementById('uf-status').textContent = 'Saved locally (data URL)';
+      } else {
+        // 1 — upload image to GitHub via Netlify function
+        const upRes = await fetch(EDITOR_FN_IMAGE, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ password: editorPassword, filename, base64 }),
+        });
+        if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
+        resolvedMediaLink = filename;
+      }
+
+      // 2 — add to in-memory data + graph immediately (optimistic)
+      const newSample = { id: sampleId, tier: 4, domain, parent: uploadNodeId, label: 'Sample', description, mediaLink: resolvedMediaLink };
       if (typeof SAMPLES !== 'undefined') SAMPLES.push(newSample);
 
       if (typeof cy !== 'undefined' && typeof LAYOUT !== 'undefined' && typeof DOMAIN_COLORS !== 'undefined') {
@@ -542,9 +555,8 @@ async function saveImage() {
         const pos   = { x: 820 * Math.cos(angle), y: 820 * Math.sin(angle) };
         cy.add({
           group: 'nodes',
-          data: { id: sampleId, label: '', tier: 4, domain, parent_node: uploadNodeId, description, mediaLink: filename },
+          data: { id: sampleId, label: '', tier: 4, domain, parent_node: uploadNodeId, description, mediaLink: resolvedMediaLink },
           position: pos,
-          // Start at full opacity so the editor can see it landed
           style: { 'background-color': DOMAIN_COLORS[domain] || '#4fc3f7', opacity: 1 },
         });
         cy.add({ group: 'edges', data: { id: `e_${sampleId}`, source: uploadNodeId, target: sampleId, type: 'hierarchy' } });
@@ -552,7 +564,7 @@ async function saveImage() {
 
       if (typeof galaxyCache !== 'undefined') galaxyCache.save();
 
-      // 3 — close the panel and immediately show the new sample's detail card
+      // 3 — close panel and show new sample's detail card
       closeUploadPanel();
       if (typeof clearSelection   === 'function') clearSelection();
       if (typeof addNodeSelection === 'function') addNodeSelection(sampleId);
@@ -560,17 +572,18 @@ async function saveImage() {
       if (newCyNode && newCyNode.length && typeof zoomToNodeCluster === 'function') {
         zoomToNodeCluster(newCyNode);
       }
-      // Brief delay so zoom animation starts before card renders
       setTimeout(() => {
         if (typeof renderSelectionPanels === 'function') renderSelectionPanels();
       }, 420);
 
-      // 4 — Sheet write in background; log but don't block the editor
-      apiPost({
-        op:  'append',
-        tab: 'nodes',
-        row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
-      }).catch(err => console.warn('[editor] Sample Sheet sync failed:', err.message));
+      // 4 — Sheet write in background (production only; no-op locally)
+      if (!isLocal) {
+        apiPost({
+          op:  'append',
+          tab: 'nodes',
+          row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
+        }).catch(err => console.warn('[editor] Sample Sheet sync failed:', err.message));
+      }
 
     } catch (err) {
       document.getElementById('uf-status').textContent = '❌ ' + err.message;

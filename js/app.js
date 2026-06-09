@@ -126,6 +126,62 @@ function openDescEditor(nodeId, triggerBtn) {
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
+// ---- Sample lightbox -------------------------------------------
+
+function openSampleLightbox(sampleId) {
+  const sample = (typeof SAMPLES !== 'undefined' ? SAMPLES : []).find(s => s.id === sampleId);
+  if (!sample || !sample.mediaLink) return;
+
+  const SAMPLES_BASE = 'https://raw.githubusercontent.com/zediiiii/secondary-math-galaxy/master/public/samples/';
+  const imgSrc = sample.mediaLink.startsWith('data:') ? sample.mediaLink : `${SAMPLES_BASE}${sample.mediaLink}`;
+
+  // Build or reuse overlay
+  let overlay = document.getElementById('sample-lightbox');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'sample-lightbox';
+    overlay.innerHTML = `
+      <div id="sample-lightbox-inner">
+        <button id="sample-lightbox-close" title="Close (Esc)">✕</button>
+        <img id="sample-lightbox-img" alt="Student work sample" title="Click to download" />
+        <p id="sample-lightbox-desc"></p>
+        <p class="sample-lightbox-hint">Click image to download</p>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('sample-lightbox-close').addEventListener('click', closeSampleLightbox);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSampleLightbox(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSampleLightbox(); });
+  }
+
+  const img  = document.getElementById('sample-lightbox-img');
+  const desc = document.getElementById('sample-lightbox-desc');
+  img.src    = imgSrc;
+  desc.textContent = sample.description || '';
+
+  // Click image → download
+  img.onclick = () => {
+    const a = Object.assign(document.createElement('a'), {
+      href:     imgSrc,
+      download: sample.mediaLink.startsWith('data:')
+        ? `sample-${sampleId}.jpg`
+        : sample.mediaLink.split('/').pop(),
+    });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSampleLightbox() {
+  const overlay = document.getElementById('sample-lightbox');
+  if (overlay) overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 // ---- App init --------------------------------------------------
 
 // ---- Export button (edit mode) ---------------------------------
