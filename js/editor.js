@@ -493,7 +493,7 @@ async function saveImage() {
       await apiPost({
         op:  'append',
         tab: 'nodes',
-        row: [sampleId, 4, domain, uploadNodeId, '', description, filename],
+        row: [sampleId, 4, domain, uploadNodeId, 'Sample', description, filename],
       });
 
       // 3 — add to in-memory data + graph so it appears immediately without reload
