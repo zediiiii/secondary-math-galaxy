@@ -58,7 +58,8 @@ exports.handler = async (event) => {
 
     if (!putRes.ok) {
       const text = await putRes.text();
-      return { statusCode: 500, headers: cors, body: `GitHub error: ${text}` };
+      console.error('[upload-image] GitHub PUT failed', putRes.status, text);
+      return { statusCode: 500, headers: cors, body: `GitHub error ${putRes.status}: ${text}` };
     }
 
     return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, filename: safeName }) };
