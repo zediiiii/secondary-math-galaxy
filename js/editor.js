@@ -19,6 +19,7 @@ let editorActive   = false;
 let editorPassword = sessionStorage.getItem('galaxy_edit_pwd') || '';
 let taskFormOpen   = false;
 let taskFormMAs    = [];
+let editingTaskId  = null;   // null = new task; string = editing existing task
 let uploadNodeId   = null;
 let pendingFile    = null;
 let ctxRowCounter  = 0;
@@ -367,31 +368,61 @@ function buildTaskFormPanel() {
   document.getElementById('tf-save-btn').addEventListener('click',   saveTask);
 }
 
-function openTaskForm() {
+function openTaskForm(taskId) {
   if (!editorActive) return;
-  taskFormOpen  = true;
-  taskFormMAs   = [];
-  ctxRowCounter = 0;
-  // Visual cue: highlight all MA squares so the editor knows to click them
+  taskFormOpen   = true;
+  editingTaskId  = taskId || null;
+  ctxRowCounter  = 0;
+
+  const existingTask = taskId
+    ? (typeof TASKS !== 'undefined' ? TASKS : []).find(t => t.id === taskId)
+    : null;
+
+  // Update header to reflect mode
+  const headerSpan = document.querySelector('#task-form-panel .ef-header span');
+  if (headerSpan) headerSpan.textContent = existingTask ? `✏️ Edit Task` : '✏️ New Task';
+
+  // Visual cue: highlight all MA squares
   if (typeof cy !== 'undefined') cy.nodes('[tier=3]').addClass('ma-picker-mode');
   const banner = document.getElementById('ma-picker-banner');
   if (banner) banner.style.display = '';
-  document.getElementById('tf-label').value    = '';
-  document.getElementById('tf-category').value = '';
-  document.getElementById('tf-pdf').value      = '';
+
+  // Pre-fill fields
+  document.getElementById('tf-label').value    = existingTask?.label    || '';
+  document.getElementById('tf-category').value = existingTask?.category || '';
+  document.getElementById('tf-pdf').value      = existingTask?.pdfLink  || '';
   document.getElementById('tf-before-rows').innerHTML = '';
   document.getElementById('tf-after-rows').innerHTML  = '';
   document.getElementById('tf-status').textContent    = '';
   document.getElementById('tf-status').className      = 'ef-status';
 
-  // Populate category suggestions from existing tasks
+  // Update save button label
+  const saveBtn = document.getElementById('tf-save-btn');
+  if (saveBtn) saveBtn.textContent = existingTask ? '💾 Save Changes' : '💾 Save Task';
+
+  // Pre-populate MAs
+  taskFormMAs = existingTask ? [...(existingTask.targetMAs || [])] : [];
+
+  // Restore MA selected state on graph
+  if (typeof cy !== 'undefined') {
+    cy.nodes('[tier=3]').forEach(n => {
+      if (taskFormMAs.includes(n.id())) n.addClass('editor-selected');
+      else n.removeClass('editor-selected');
+    });
+  }
+
+  // Populate category suggestions
   const dl = document.getElementById('tf-categories-list');
   dl.innerHTML = '';
-  [...new Set(TASKS.map(t => t.category))].forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat;
-    dl.appendChild(opt);
+  [...new Set((TASKS || []).map(t => t.category))].forEach(cat => {
+    const opt = document.createElement('option'); opt.value = cat; dl.appendChild(opt);
   });
+
+  // Pre-populate context rows for existing task
+  if (existingTask) {
+    (existingTask.beforeContext || []).forEach(c => addContextRow('before', c));
+    (existingTask.afterContext  || []).forEach(c => addContextRow('after',  c));
+  }
 
   renderMAChips();
   document.getElementById('task-form-panel').classList.add('open');
@@ -399,9 +430,9 @@ function openTaskForm() {
 }
 
 function closeTaskForm() {
-  taskFormOpen = false;
+  taskFormOpen  = false;
+  editingTaskId = null;
   document.getElementById('task-form-panel').classList.remove('open');
-  // Remove MA-picker visual state
   if (typeof cy !== 'undefined') cy.nodes('[tier=3]').removeClass('ma-picker-mode').removeClass('editor-selected');
   const banner = document.getElementById('ma-picker-banner');
   if (banner) banner.style.display = 'none';
@@ -466,36 +497,34 @@ function renderMAChips() {
   });
 }
 
-function addContextRow(stage) {
+function addContextRow(stage, prefill) {
   const container = document.getElementById(`tf-${stage}-rows`);
   const idx = ctxRowCounter++;
   const div = document.createElement('div');
   div.className = 'ef-ctx-row';
 
+  const TYPE_OPTIONS = ['Purposeful Question','Anticipated Model','Scaffolding','Intervention','Reflection Prompt','Extension','Note'];
   const maOptions = taskFormMAs.length
-    ? taskFormMAs.map(id => `<option value="${id}">${_maOptionLabel(id)}</option>`).join('')
+    ? taskFormMAs.map(id => `<option value="${id}"${prefill?.maId===id?' selected':''}>${_maOptionLabel(id)}</option>`).join('')
     : '<option value="">— select MAs first —</option>';
+
+  const typeOpts = TYPE_OPTIONS.map(t =>
+    `<option${prefill?.type===t?' selected':''}>${t}</option>`).join('');
 
   div.innerHTML = `
     <div class="ef-ctx-row-top">
-      <select class="ef-ctx-type">
-        <option>Purposeful Question</option>
-        <option>Anticipated Model</option>
-        <option>Scaffolding</option>
-        <option>Intervention</option>
-        <option>Note</option>
-      </select>
+      <select class="ef-ctx-type">${typeOpts}</select>
       <select class="ef-ctx-ma">${maOptions}</select>
       <button class="ef-ctx-rm" title="Remove row">✕</button>
     </div>
-    <textarea class="ef-ctx-content" placeholder="Guidance text…" rows="2"></textarea>`;
+    <textarea class="ef-ctx-content" placeholder="Guidance text…" rows="2">${prefill?.content ? prefill.content.replace(/</g,'&lt;') : ''}</textarea>`;
 
   div.querySelector('.ef-ctx-rm').addEventListener('click', () => div.remove());
   container.appendChild(div);
-  div.querySelector('.ef-ctx-content').focus();
+  if (!prefill) div.querySelector('.ef-ctx-content').focus();
 }
 
-async function saveTask() {
+function saveTask() {
   const label    = document.getElementById('tf-label').value.trim();
   const category = document.getElementById('tf-category').value.trim();
   const pdf      = document.getElementById('tf-pdf').value.trim();
@@ -504,45 +533,66 @@ async function saveTask() {
   if (!category)           return taskStatus('⚠️ Category is required.', 'warn');
   if (!taskFormMAs.length) return taskStatus('⚠️ Select at least one mental action.', 'warn');
 
-  // Generate a unique ID — slug + short timestamp suffix avoids collisions
-  const slug = label.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20);
-  const id   = `Task_${slug}_${Date.now().toString(36).toUpperCase().slice(-4)}`;
-
-  taskStatus('Saving…', 'info');
-  document.getElementById('tf-save-btn').disabled = true;
-
-  const taskRow = [id, label, category, '', pdf, taskFormMAs.join('|')];
-
-  const ctxRows = [];
+  // Collect context rows from the form
+  const ctxEntries = { before: [], after: [] };
   ['before', 'after'].forEach(stage => {
     document.querySelectorAll(`#tf-${stage}-rows .ef-ctx-row`).forEach(row => {
       const content = row.querySelector('.ef-ctx-content').value.trim();
       const maId    = row.querySelector('.ef-ctx-ma').value;
       const type    = row.querySelector('.ef-ctx-type').value;
-      if (content && maId) ctxRows.push([id, stage, maId, type, content]);
+      if (content && maId) ctxEntries[stage].push({ maId, type, content });
     });
   });
 
-  // ── Optimistic update: add task to in-memory data immediately ──
-  const newTask = {
-    id, label, category, domain: '', pdfLink: pdf,
-    targetMAs: [...taskFormMAs],
-    beforeContext: ctxRows.filter(r => r[1]==='before').map(r => ({ maId:r[2], type:r[3], content:r[4] })),
-    afterContext:  ctxRows.filter(r => r[1]==='after' ).map(r => ({ maId:r[2], type:r[3], content:r[4] })),
-  };
-  if (typeof TASKS !== 'undefined') TASKS.push(newTask);
-  if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
-  if (typeof galaxyCache !== 'undefined') galaxyCache.save();
-  taskStatus('✅ Added! Syncing to Sheet…', 'ok');
+  if (editingTaskId) {
+    // ── UPDATE existing task ────────────────────────────────────
+    const task = (TASKS || []).find(t => t.id === editingTaskId);
+    if (!task) return taskStatus('⚠️ Task not found in memory.', 'warn');
 
-  // ── Queue Sheets writes (committed later via the commit bar) ──
-  queueOp({ op: 'append', tab: 'tasks', row: taskRow });
-  ctxRows.forEach(row => queueOp({ op: 'append', tab: 'teacher_context', row }));
-  taskStatus('✅ Added locally — commit to save to Sheets.', 'ok');
-  setTimeout(closeTaskForm, 2000);
+    task.label         = label;
+    task.category      = category;
+    task.pdfLink       = pdf;
+    task.targetMAs     = [...taskFormMAs];
+    task.beforeContext = ctxEntries.before;
+    task.afterContext  = ctxEntries.after;
+
+    if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
+    if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+
+    const taskRow = [editingTaskId, label, category, task.domain || '', pdf, taskFormMAs.join('|')];
+    queueOp({ op: 'updateTaskRow', taskId: editingTaskId, row: taskRow });
+    queueOp({ op: 'deleteAllContextForTask', taskId: editingTaskId });
+    const id = editingTaskId;
+    ctxEntries.before.forEach(c => queueOp({ op: 'append', tab: 'teacher_context', row: [id, 'before', c.maId, c.type, c.content] }));
+    ctxEntries.after .forEach(c => queueOp({ op: 'append', tab: 'teacher_context', row: [id, 'after',  c.maId, c.type, c.content] }));
+
+    taskStatus('✅ Updated locally — commit to save to Sheets.', 'ok');
+
+  } else {
+    // ── CREATE new task ─────────────────────────────────────────
+    const slug = label.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 20);
+    const id   = `Task_${slug}_${Date.now().toString(36).toUpperCase().slice(-4)}`;
+
+    const newTask = {
+      id, label, category, domain: '', pdfLink: pdf,
+      targetMAs:     [...taskFormMAs],
+      beforeContext: ctxEntries.before,
+      afterContext:  ctxEntries.after,
+    };
+    (TASKS || []).push(newTask);
+    if (typeof buildTaskSidebar === 'function') buildTaskSidebar();
+    if (typeof galaxyCache !== 'undefined') galaxyCache.save();
+
+    const taskRow = [id, label, category, '', pdf, taskFormMAs.join('|')];
+    queueOp({ op: 'append', tab: 'tasks', row: taskRow });
+    ctxEntries.before.forEach(c => queueOp({ op: 'append', tab: 'teacher_context', row: [id, 'before', c.maId, c.type, c.content] }));
+    ctxEntries.after .forEach(c => queueOp({ op: 'append', tab: 'teacher_context', row: [id, 'after',  c.maId, c.type, c.content] }));
+
+    taskStatus('✅ Added locally — commit to save to Sheets.', 'ok');
+  }
 
   cy.nodes('[tier=3]').removeClass('editor-selected');
-  document.getElementById('tf-save-btn').disabled = false;
+  setTimeout(closeTaskForm, 1800);
 }
 
 function taskStatus(msg, type) {

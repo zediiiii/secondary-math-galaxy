@@ -28,10 +28,12 @@ function buildTaskSidebar() {
       item.innerHTML = `
         <span class="task-label">${task.label}</span>
         ${task.pdfLink ? `<button class="task-pdf-btn" data-task="${task.id}" title="Open task PDF">📄</button>` : ''}
+        ${inEditMode ? `<button class="task-edit-btn" data-task-id="${task.id}" title="Edit task">✏️</button>` : ''}
         ${inEditMode ? `<button class="task-delete-btn" data-task-id="${task.id}" title="Delete task">✕</button>` : ''}
       `;
       item.addEventListener('click', e => {
         if (e.target.classList.contains('task-pdf-btn'))    return;
+        if (e.target.classList.contains('task-edit-btn'))   return;
         if (e.target.classList.contains('task-delete-btn')) return;
         selectTask(task.id);
       });
@@ -40,6 +42,13 @@ function buildTaskSidebar() {
         pdfBtn.addEventListener('click', e => {
           e.stopPropagation();
           openPDFModal(task.pdfLink, task.label);
+        });
+      }
+      const editBtn = item.querySelector('.task-edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          if (typeof openTaskForm === 'function') openTaskForm(task.id);
         });
       }
       const delBtn = item.querySelector('.task-delete-btn');

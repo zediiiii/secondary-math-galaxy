@@ -820,15 +820,18 @@ body.edit-mode #top-bar {
 }
 .desc-cancel-btn:hover { color: var(--text); }
 
-/* ---- Task delete button (edit mode) -------------------------- */
-.task-delete-btn {
+/* ---- Task edit / delete buttons (edit mode) ------------------ */
+.task-edit-btn, .task-delete-btn {
   background: none; border: none; cursor: pointer;
   color: var(--text-dim); font-size: 13px; padding: 2px 5px;
   border-radius: 4px; opacity: 0; transition: opacity 0.15s, color 0.15s;
   flex-shrink: 0;
 }
+.task-item:hover .task-edit-btn,
 .task-item:hover .task-delete-btn,
+.task-item.selected .task-edit-btn,
 .task-item.selected .task-delete-btn { opacity: 1; }
+.task-edit-btn:hover   { color: var(--accent); }
 .task-delete-btn:hover { color: #ff6b6b; }
 
 /* ---- Sample delete button (edit mode, inside detail card) ---- */

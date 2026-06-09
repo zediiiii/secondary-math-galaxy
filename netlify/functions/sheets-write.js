@@ -136,15 +136,45 @@ exports.handler = async (event) => {
       const tabName = body.tab;
       if (!TAB_COLS[tabName]) return { statusCode: 400, headers: cors, body: `Unknown tab: ${tabName}` };
 
-      // Find the row by searching column A for the ID
       const colA   = await sheetsAPI(token, 'GET', `/values/${encodeURIComponent(tabName + '!A:A')}`);
       const rows   = colA.values || [];
       const rowIdx = rows.findIndex(r => r[0] === body.id);
       if (rowIdx <= 0) return { statusCode: 404, headers: cors, body: 'Row not found or is header' };
 
-      // Clear all cells in that row — empty rows are filtered out by the loader
       const clearRange = `${tabName}!${rowIdx + 1}:${rowIdx + 1}`;
       await sheetsAPI(token, 'POST', `/values/${encodeURIComponent(clearRange)}:clear`, {});
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };
+    }
+
+    // ── deleteAllContextForTask: clear every teacher_context row for a taskId ──
+    if (body.op === 'deleteAllContextForTask') {
+      const colA = await sheetsAPI(token, 'GET', `/values/${encodeURIComponent('teacher_context!A:A')}`);
+      const rows = colA.values || [];
+      // Collect all row indices (1-based, skip header at index 0) that match
+      const toClear = rows.reduce((acc, r, i) => {
+        if (i > 0 && r[0] === body.taskId) acc.push(i + 1);
+        return acc;
+      }, []);
+      // Clear each matching row
+      await Promise.all(toClear.map(rowNum =>
+        sheetsAPI(token, 'POST',
+          `/values/${encodeURIComponent(`teacher_context!${rowNum}:${rowNum}`)}:clear`, {})
+      ));
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, cleared: toClear.length }) };
+    }
+
+    // ── updateTaskRow: replace the task's row data in place ──
+    if (body.op === 'updateTaskRow') {
+      const colA   = await sheetsAPI(token, 'GET', `/values/${encodeURIComponent('tasks!A:A')}`);
+      const rows   = colA.values || [];
+      const rowIdx = rows.findIndex(r => r[0] === body.taskId);
+      if (rowIdx <= 0) return { statusCode: 404, headers: cors, body: 'Task row not found' };
+
+      const range = `tasks!A${rowIdx + 1}:F${rowIdx + 1}`;
+      await sheetsAPI(token, 'PUT',
+        `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+        { values: [body.row] }
+      );
       return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true }) };
     }
 
